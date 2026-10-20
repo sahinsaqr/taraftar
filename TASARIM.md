@@ -77,8 +77,8 @@ yeni bir kart `.kart` sınıfını (ya da `background: var(--yuzey) var(--kart-z
 
 | Değişken | Koyu | Açık |
 |---|---|---|
-| `--kart-zemin` | gradyan #304C79 → #283F68 ¹ | düz beyaz (`--yuzey`) |
-| `--kart-golge` | `inset 0 1px 0 rgba(255,255,255,.08)`, `0 1px 2px` + `0 8px 18px rgba(5,12,25,.35)` | `0 1px 2px rgba(27,45,75,.08)`, `0 8px 20px rgba(27,45,75,.10)`; ince kenar korunur |
+| `--kart-zemin` | gradyan #304C79 → #283F68 ¹ | gradyan #FFFFFF → #F8FAFD (sayfa zemini #EEF2F8) ² |
+| `--kart-golge` | `inset 0 1px 0 rgba(255,255,255,.08)`, `0 1px 2px` + `0 8px 18px rgba(5,12,25,.35)` | `0 1px 2px rgba(27,45,75,.10)`, `0 10px 24px rgba(27,45,75,.12)`; ince kenar korunur |
 | `--kart-golge-basili` | basılıyken küçülmüş gölge | aynı mantık |
 | `--satir-g-zemin` | #3E765C → #346650 | #E4F3E0 → #D3E8CE |
 | `--satir-m-zemin` | #62405A → #523348 | #F8E6EA → #EFD3DA |
@@ -92,6 +92,10 @@ yeni bir kart `.kart` sınıfını (ya da `background: var(--yuzey) var(--kart-z
 ¹ Örnek olarak verilen #34527F üst ton, koyu kartın üstündeki ikincil metni (#B0BED2) 4.19:1'e düşürüyor.
 4.5:1'i koruyan en açık ton #304C79 (4.57:1); derinliği alttaki koyulaşma, üst ışık ve gölge verir.
 Galibiyet satırının açık ucu #3E765C'de ana metin 4.73:1.
+² `--kart-zemin` her iki temada **gradyan** olmalı. Kartlar `background: var(--yuzey) var(--kart-zemin)` kullanır;
+`--kart-zemin` düz renk olursa değer "renk renk" olur, geçersiz sayılır ve kart saydam kalır (açık temada bu hata oldu).
+Kartın içindeki kutular (Takımlarım'daki SIRADAKİ/SON MAÇ, Çıkış yap düğmesi, seçici zeminleri) `--yuzey-2` (#E3E9F2);
+Puan tablosu satırları kart renginde, takip edilen takım satırı hafif yeşil.
 
 Kurallar:
 - Kart türleri: maç kartları, Geçmiş/Takvim satırları, takvim kartı, Profil kartları, Puan tablosu kutusu, G/B/M kutuları,

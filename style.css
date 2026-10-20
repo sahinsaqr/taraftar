@@ -80,8 +80,9 @@
   --satir-m: #f5dde3;
   --tehlike-yazi: #c4391b;
   --golge: 0 1px 2px rgba(27,45,75,.06), 0 6px 18px rgba(27,45,75,.06);
-  --kart-zemin: var(--yuzey);
-  --kart-golge: 0 1px 2px rgba(27,45,75,.08), 0 8px 20px rgba(27,45,75,.10);
+  /* gradyan (görsel) olmalı: düz renk olursa "background: renk renk" geçersiz olur ve kart saydam kalır */
+  --kart-zemin: linear-gradient(180deg, #ffffff, #f8fafd);
+  --kart-golge: 0 1px 2px rgba(27,45,75,.10), 0 10px 24px rgba(27,45,75,.12);
   --kart-golge-basili: 0 1px 1px rgba(27,45,75,.08), 0 3px 8px rgba(27,45,75,.08);
   --satir-g-zemin: linear-gradient(180deg, #e4f3e0, #d3e8ce);
   --satir-m-zemin: linear-gradient(180deg, #f8e6ea, #efd3da);
