@@ -749,7 +749,7 @@ function cizEkle() {
     <div class="takim-izgara" id="takimIzgara">${takimlar.length ? takimlar.map((t) => takimDugme(t, ids.has(t.id))).join('') : '<p class="bos">Sonuç bulunamadı.</p>'}</div>`;
 }
 function takimDugme(t, secili) {
-  return `<button class="takim-sec ${secili ? 'secili' : ''}" data-takim="${kacis(t.id)}" data-lig="${kacis(t.lig)}" aria-pressed="${secili}">
+  return `<button class="takim-sec basilabilir${secili ? ' secili' : ''}" data-takim="${kacis(t.id)}" data-lig="${kacis(t.lig)}" aria-pressed="${secili}">
     ${logoHtml(t, 'orta')}<span class="isim">${kacis(t.ad)}</span>
     <span class="isaret">${secili ? '<svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>' : ''}</span>
   </button>`;

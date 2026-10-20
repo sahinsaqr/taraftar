@@ -70,6 +70,39 @@ Kontrast notları (ölçülen):
 - Açık temada canlı yazı #C4391B ikinci zeminde (#E3E9F2) 4.36:1 (geçmez); yalnız kart (beyaz, 5.32:1) üstünde kullan.
 - Canlı rozet (#1B2D4B / #FF6B4A) 4.89:1, B rozeti 5.05:1.
 
+## Derinlik
+
+Kartlar düz görünmez: gradyan, üst kenarda ışık ve yumuşak gölge. Hepsi `style.css` başında değişken;
+yeni bir kart `.kart` sınıfını (ya da `background: var(--yuzey) var(--kart-zemin); box-shadow: var(--kart-golge)`) kullanır.
+
+| Değişken | Koyu | Açık |
+|---|---|---|
+| `--kart-zemin` | gradyan #304C79 → #283F68 ¹ | düz beyaz (`--yuzey`) |
+| `--kart-golge` | `inset 0 1px 0 rgba(255,255,255,.08)`, `0 1px 2px` + `0 8px 18px rgba(5,12,25,.35)` | `0 1px 2px rgba(27,45,75,.08)`, `0 8px 20px rgba(27,45,75,.10)`; ince kenar korunur |
+| `--kart-golge-basili` | basılıyken küçülmüş gölge | aynı mantık |
+| `--satir-g-zemin` | #3E765C → #346650 | #E4F3E0 → #D3E8CE |
+| `--satir-m-zemin` | #62405A → #523348 | #F8E6EA → #EFD3DA |
+| `--canli-parlama` | `0 0 0 1px` canlı rengi, `0 6px 18px rgba(255,107,74,.25)` | aynı |
+| `--gomuk` | içe gömük seçici zemini (inset gölge) | daha hafif |
+| `--kabarik` | seçili lime sekme | daha hafif |
+| `--kucuk-golge` | G/B/M rozetleri, takvimde seçili gün | daha hafif |
+| `--menu-golge` | alt menünün üstünde yukarı gölge | daha hafif |
+| `--logo-kenar` | ince açık kenar + hafif gölge | ince koyu kenar + hafif gölge (beyaz logolar kaybolmasın) |
+
+¹ Örnek olarak verilen #34527F üst ton, koyu kartın üstündeki ikincil metni (#B0BED2) 4.19:1'e düşürüyor.
+4.5:1'i koruyan en açık ton #304C79 (4.57:1); derinliği alttaki koyulaşma, üst ışık ve gölge verir.
+Galibiyet satırının açık ucu #3E765C'de ana metin 4.73:1.
+
+Kurallar:
+- Kart türleri: maç kartları, Geçmiş/Takvim satırları, takvim kartı, Profil kartları, Puan tablosu kutusu, G/B/M kutuları,
+  Takım ekle'deki takım düğmeleri. Galibiyet/mağlubiyet satırları da aynı gölgeyi ve kendi renginde gradyanı alır.
+- Canlı maç kartı/satırı: turuncu kenar + `--canli-parlama`.
+- Basılabilir kart: `.basilabilir` (dokununca `scale(.98)`, gölge `--kart-golge-basili`, 120 ms).
+  Şimdilik Takım ekle'deki takım düğmeleri; maç kartı detay açılınca (4. aşama) alır. Basınca bir şey olmayan karta verilmez.
+- `prefers-reduced-motion: reduce` açıksa basılma, nokta yanıp sönmesi ve yenileme dönüşü animasyonsuz.
+- Kaydırma akıcılığı: büyük blur yok (en fazla 18–20px gölge), `backdrop-filter` yok, kartlara `will-change` verilmez.
+- Kontrol: gradyan üzerindeki yazı iki uçta da 4.5:1 (ekran görüntüsü betiği gradyan duraklarını da ölçer).
+
 ## Tema
 
 - Profil → Görünüm: **Sistem / Açık / Koyu** (varsayılan Sistem). Seçim `localStorage` `ft_tema`'da.
