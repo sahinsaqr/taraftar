@@ -7,7 +7,8 @@ bir kural değişirse önce burası güncellenir.
 |---|---|
 | 1 | Renkler, yazı tipleri, tema, 4 sekmeli alt menü, Profil ekranı (yapıldı) |
 | 2 | Üst başlık kaldırıldı (aşağı çekip yenile), Maçlar ekranı: Geçmiş / Yaklaşan / Takvim (yapıldı) |
-| 3–4 | Takımlar, Puan ekranları; takım bazında bildirim zili (3. aşama), takım sıralaması ayarının yeri (3. aşama), maç detayı (4. aşama) |
+| 3 | Takımlarım (zil, şu an/son maç/sıradaki, form), basılı tutup sürükleyerek sıralama, Takım ekle (yapıldı) |
+| 4 | Puan ekranı, maç detayı |
 
 ## Genel
 
@@ -47,6 +48,7 @@ Hepsi `style.css` başında CSS değişkeni. Ekranlar renk kodu yazmaz, değişk
 | `--canli` | canlı rozet zemini, canlı nokta | #FF6B4A | #FF6B4A |
 | `--canli-zemin-yazi` | canlı rozet üstündeki yazı | #1B2D4B | #1B2D4B |
 | `--canli-yazi` | canlı yazı | #FFAA96 | #C4391B |
+| `--canli-yazi-ic` | ikinci zemin (iç kutu) üstünde canlı/mağlubiyet yazısı | #FFAA96 | #B5341A (#C4391B burada 4.36:1) |
 | `--satir-g` | galibiyet satırı | #3B7158 | #DDEFD9 |
 | `--satir-m` | mağlubiyet satırı | #5C3A52 | #F5DDE3 |
 | `--satir-b` | beraberlik satırı | = kart (#2F4B78) | = kart (#FFFFFF) |
@@ -152,13 +154,12 @@ Başlığın altında 3 sekmeli seçici (`.bolmeli.uc`): **Geçmiş | Yaklaşan 
 Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yaklaşan'a döner.
 
 - **Yaklaşan:** takip edilen takımların maçları; önce canlı (önce başlayan üstte), sonra başlama saatine göre.
-  Biten maç düşer. Her maç ayrı kart (`.mac-kart`): üstte ortada "Lig · N. Hafta"; ev sahibi solda, deplasman sağda
+  Biten maç düşer. Her maç ayrı kart (`.mac-kart`): üstte ortada lig adı; ev sahibi solda, deplasman sağda
   (logo üstte, ad altta); ortada gün ("Bugün", "Yarın", "Cmt 25 Eki") ve büyük saat. Bugünün saati `--vurgu`.
   Canlı kart: ortada büyük skor "2 : 1", sağ üstte turuncu "● CANLI · 67'" rozeti (nokta yanıp söner),
   altta ilerleme çubuğu (90 dk'ya göre, devre arası %50). Karta basınca şimdilik bir şey olmaz (maç detayı 4. aşamada).
-- **Hafta:** ESPN hafta/tur vermiyor. Lig dosyasındaki sezon maçları tarihe göre sıralanıp her takımın o ligdeki
-  kaçıncı maçı olduğu sayılır (iki takımdan büyüğü). Ertelenip ileri atılan maçlarda bir kayabilir.
-  Lig için en fazla 2×(takım−1), UEFA için 8 (lig aşaması); üstündeyse hafta yazılmaz.
+- **Lig satırı:** maç kartında yalnız lig adı. Tahmini hafta numarası kaldırıldı; gerçek tur bilgisi veri kaynağı
+  (API-Football) değişince eklenecek.
 - **Geçmiş:** üstte takım seçici: "Tümü" + takımlar Takımlarım sırasıyla; 5 veya daha az takımda yatay çipler
   (logo + ad), fazlasında açılır liste. Tek takım seçiliyken G/B/M kutuları (zemin: galibiyet satırı / kart /
   mağlubiyet satırı); "Tümü"de görünmez. "SON MAÇLAR" satırları (`.sonuc-satir`): üstte rozet + tarih, sağda lig;
@@ -172,6 +173,47 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
   renginde), canlı = skor + "CANLI · dk" (turuncu çerçeve), oynanmamış = saat + lig. Maç yoksa
   "Bu gün takımlarının maçı yok". Ay değişince seçili gün o ayın 1'i (bu aysa bugün).
 
+## Takımlarım
+
+- Başlık "Takımlarım", sağ üstte lime "+ Takım ekle". Takım yoksa boş ekran mesajı + "Takım ekle" düğmesi.
+- Takım kartı (`.takim-kart`), yukarıdan aşağı:
+  - Logo (48px), ad (Barlow Condensed kalın), altında "Lig · x. sırada · y puan"; sağda zil (44px):
+    açık = dolu zil `--vurgu`, kapalı = üstü çizili çizgisel zil `--yazi-2`. `role="switch"`.
+  - İki iç kutu (`--yuzey-2`) yan yana. Solda "ŞU AN" (canlı: rakip logo + kısaltma, skor, dakika; `--canli-yazi-ic`,
+    turuncu kenar) ya da "SON MAÇ" (rakip + skor). Skor bizim takıma göre (biz–onlar); rengi sonuca göre:
+    G `--vurgu`, M `--canli-yazi-ic`, B `--yazi`. Sağda "SIRADAKİ" (rakip · gün saat). Maç yoksa "—".
+  - En altta "FORM" ve son 5 maçın G/B/M rozetleri, en eski solda.
+  - Gol atanlar kartta yok (maç detayına taşınacak).
+  - Açık temada canlı "ŞU AN" kutusu beyaza yakın zeminde (canlı yazı ikinci zeminde 4.5:1'i tutmuyor).
+- **Takım bazında zil:** `takimlar[i].zil === false` = kapalı (Firestore `kullanicilar/{uid}` içindeki takım listesinde;
+  kural değişmedi). Kapalı takımın hiçbir FCM konusuna abone olunmaz (`bulut.js` → `abonelikleriEsitle`);
+  açılınca Profil'deki türlere göre yeniden abone olunur. Alan yoksa açık sayılır.
+
+## Sıralama (basılı tut ve sürükle)
+
+- Ayrı "Sırala" düğmesi ve ≡ tutamaç yok. Karta ~0,5 sn basılı tutunca sıralama başlar (SortableJS: `delay: 500`,
+  `delayOnTouchOnly`, `touchStartThreshold: 6`; parmak oynarsa normal kaydırma). Farede gecikme yok.
+- Basılı tutulunca: kart hafif büyür ve gölge alır (`.sirala-secili`), kısa titreşim, diğer kartlar soluklaşır,
+  hedef yerde kesik çizgili yuva (`.sirala-yer`), ekranın üstünde lime şerit "Sıralama · bırakınca kaydedilir"
+  (`body.siralaniyor::after`). Zile basmak sürükleme başlatmaz.
+- Bırakınca sıra hemen kaydedilir (cihaz + Firestore `takimlar` dizisi). Bu sıra her yerde kullanılır
+  (Geçmiş'teki takım seçici dahil). Sürüklerken gelen veri yenilemesi bırakınca çizilir.
+- Geri tuşu (ve Esc) sürükleme sırasında sürüklemeyi iptal eder, eski sıra geri gelir.
+- Klavye: kart odaklıyken Alt + ↑/↓ taşır.
+- İlk açılışta (2+ takım) kapatılabilir ipucu: "Sıralamak için karta basılı tut, sonra yukarı aşağı sürükle";
+  ✕ ile kapanır, bir daha görünmez (`localStorage` `ft_ipucu_sirala`).
+- Aşağı çekip yenileme sürükleme sırasında devre dışı.
+
+## Takım ekle
+
+- Üstte geri oku + "Takım ekle", büyüteç simgeli arama kutusu ("Takım ara"). Arama Türkçe karakterden ve
+  harf işaretlerinden bağımsız (ı/i, ş/s, ø/o…).
+- Altında yatay kaydırılan filtreler: **Popüler** (varsayılan; `POPULER` listesindeki büyük kulüpler), sonra
+  `ayarlar.json`'daki ligler. Seçili filtre lime. Arama yapılırken filtreler gizlenir, tüm liglerde aranır.
+- Liste satırı: logo, ad, altında lig (takımın ilk göründüğü lig: önce ulusal lig); sağda "Takip et" (çerçeveli) /
+  "Takipte ✓" (lime dolgu). Basınca anında eklenir/çıkarılır, kısa titreşim. "Tamam" düğmesi yok.
+- Alt menü görünür, "Takımlar" seçili. Geri tuşu ve alt menüdeki "Takımlar" Takımlarım'a döner.
+
 ## Profil ekranı
 
 Yukarıdan aşağı kartlar:
@@ -179,9 +221,10 @@ Yukarıdan aşağı kartlar:
    "Google ile bağlı · takımların eşitleniyor", Çıkış yap. Misafirde "Google ile giriş yap" + kısa açıklama.
 2. **Bildirimler** (yalnız Android) — 4 anahtar (`role="switch"`), her birinin altında bir satır açıklama:
    Goller / Maç başladı · devre arası / Maç sonucu / Maçtan önce hatırlatma.
-   Bildirim izni yoksa üstte izin isteme düğmesi. Takım bazında zil notu 3. aşamada eklenecek.
-3. **Görünüm** — Sistem / Açık / Koyu (seçili olan lime zemin). Takım sıralaması (Elle/Otomatik/Karışık)
-   geçici olarak burada; yeri 3. aşamada belirlenecek.
+   Bildirim izni yoksa üstte izin isteme düğmesi. Altında not: "Bir takımın bildirimlerini tamamen kapatmak için
+   Takımlarım'da o takımın zil simgesine dokun."
+3. **Görünüm** — Sistem / Açık / Koyu (seçili olan lime zemin). Takım sıralaması ayarı (Elle/Otomatik/Karışık)
+   3. aşamada kaldırıldı: sıra her zaman elle (Takımlarım'da sürükle); eski kayıtlı ayar yok sayılır.
 4. **Hakkında** — Gizlilik politikası (mlkcraft.com/privacy#taraftar), Geri bildirim gönder (info@mlkcraft.com),
    Veriler (son veri zamanı), Sürüm (`package.json` → `version`).
 5. En altta, kartın dışında: **Hesabımı sil** (çerçeveli, `--tehlike-yazi`) ve altında

@@ -5,6 +5,7 @@
    - Web: Firebase JS SDK, gstatic CDN'den ES modülü olarak (derleme aracı yok)
 
    Firestore: kullanicilar/{uid} = { takimlar: [...], bildirim: {gol, mac, son, hat}, guncelleme }
+   takimlar[i] = { id, ad, kisa, logo, lig, renk?, renk2?, zil? }  (zil: false = o takımın bildirimleri kapalı)
    Bildirim konuları (yalnız Android): t{takımID}_{tür}, tür = gol | mac | son | hat */
 
 import { FIREBASE_AYAR } from './firebase-ayar.js';
@@ -132,7 +133,9 @@ class YerelBulut {
   async abonelikleriEsitle(takimlar, ayar) {
     if (!this.mesaj) return;
     const istenen = new Set();
+    // zili kapalı takımın (zil: false) hiçbir konusuna abone olunmaz; açılınca türlere göre yeniden abone olur
     for (const t of takimlar) {
+      if (t.zil === false) continue;
       for (const tur of BILDIRIM_TURLERI) if (ayar[tur]) istenen.add(`t${t.id}_${tur}`);
     }
     let mevcut;
