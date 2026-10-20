@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="1024" height="1024"><defs>
-<linearGradient id="navy" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34558A"/><stop offset="1" stop-color="#121F36"/></linearGradient>
+<linearGradient id="navy" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#40669F"/><stop offset="1" stop-color="#182A47"/></linearGradient>
 <linearGradient id="lime" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E6FF96"/><stop offset="0.55" stop-color="#C8F04A"/><stop offset="1" stop-color="#86AE1C"/></linearGradient>
 <linearGradient id="white" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#B9C6D8"/></linearGradient>
 <radialGradient id="orange" cx="0.38" cy="0.32" r="0.75"><stop offset="0" stop-color="#FFC2A8"/><stop offset="0.45" stop-color="#FF6B4A"/><stop offset="1" stop-color="#C2391C"/></radialGradient>
