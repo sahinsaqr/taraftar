@@ -1144,6 +1144,9 @@ function bildirimKarti() {
         <span class="anahtar" aria-hidden="true"></span>
       </button>`).join('')}
     <p class="kart-not">Bir takımın bildirimlerini tamamen kapatmak için Takımlarım'da o takımın zil simgesine dokun.</p>
+    <button class="menu-satir" id="bildirimAyarBtn">
+      <span><b>Bildirim sesi ve titreşim</b><small>Android ayarlarında her bildirim türünün sesi, titreşimi ve önemi</small></span>${SAG_OK}
+    </button>
   </section>`;
 }
 
@@ -1288,6 +1291,7 @@ document.addEventListener('click', (e) => {
   else if (h.id === 'googleBtn') googleIleGiris();
   else if (h.id === 'cikisBtn') cikisYap();
   else if (h.id === 'izinBtn') izinDugmesi();
+  else if (h.id === 'bildirimAyarBtn') window.Capacitor?.Plugins?.Ayarlar?.bildirimAyarlari().catch(() => tost('Ayarlar açılamadı'));
   else if (h.id === 'silBtn') { durum.onay = 'sil'; ciz(); $('#onayIptal')?.focus(); }
   else if (h.id === 'onayIptal') { durum.onay = null; ciz(); }
   else if (h.id === 'gizlilikBtn') { durum.onay = 'gizlilik'; ciz(); $('#onayIptal')?.focus(); }

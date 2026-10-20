@@ -77,11 +77,30 @@ def ntfy_gonder(m, baslik, mesaj, etiketler, oncelik):
 
 
 def skor_metni(m):
-    return f"{m['ev']['ad']} {m['ev_skor'] or 0}-{m['dep_skor'] or 0} {m['dep']['ad']}"
+    return f"{m['ev']['ad']} {m['ev_skor'] or 0}–{m['dep_skor'] or 0} {m['dep']['ad']}"
 
 
 def eslesme(m):
-    return f"{m['ev']['ad']} - {m['dep']['ad']}"
+    return f"{m['ev']['ad']} – {m['dep']['ad']}"
+
+
+def lig_adi(m):
+    return next((l["ad"] for l in ayarlar()["ligler"] if l["kod"] == m.get("lig")), "")
+
+
+def turkiye_saati(dt):
+    """Bildirimdeki başlama saati Türkiye saatiyle (UTC+3, yaz saati yok)."""
+    return (dt + timedelta(hours=3)).strftime("%H:%M")
+
+
+def gol_ayrintisi(m, atan, atan_skor):
+    """"67' Oyuncu · Takım" ("(k.k.)" / "(p)" ekli). Gol listesi skorla uyuşmazsa dakika + takım."""
+    goller = [g for g in m.get("goller", []) if g["takim"] == atan["id"]]
+    if goller and len(goller) == atan_skor and goller[-1].get("oyuncu"):
+        g = goller[-1]
+        ek = " (k.k.)" if g.get("kk") else " (p)" if g.get("pen") else ""
+        return f"{g['dk']} {g['oyuncu']}{ek} · {atan['ad']}"
+    return " · ".join(x for x in (m.get("dakika") or "", atan["ad"]) if x)
 
 
 class Bildirici:
@@ -99,26 +118,29 @@ class Bildirici:
 
 
 def degisiklikleri_bildir(b, eski, yeni):
-    """Eski ve yeni maç durumunu karşılaştırıp gereken bildirimleri gönderir."""
+    """Eski ve yeni maç durumunu karşılaştırıp gereken bildirimleri gönderir.
+
+    Metinler (TASARIM.md > Bildirimler): başlık olayı ve skoru, gövde ayrıntıyı (oyuncu, lig) verir."""
     mid = yeni["id"]
     kod = yeni["durum_kodu"]
+    lig = lig_adi(yeni)
 
     if kod in ERTELENDI:
-        b.bir_kez(f"{mid}:ertelendi", yeni, "son", "ertelendi", "Maç ertelendi / durduruldu",
-                  f"{eslesme(yeni)}", ("warning",))
+        b.bir_kez(f"{mid}:ertelendi", yeni, "son", "ertelendi", f"Maç ertelendi: {eslesme(yeni)}",
+                  lig or "Maç ertelendi ya da durduruldu", ("warning",))
         return
 
     if yeni["durum"] == "pre":
         bas = zaman_oku(yeni["tarih"])
         if bas and timedelta(0) < bas - simdi() <= HATIRLATMA:
             dk = int((bas - simdi()).total_seconds() // 60) + 1
-            b.bir_kez(f"{mid}:hatirlat", yeni, "hat", "hatirlat", f"Maç {dk} dakika sonra başlıyor",
-                      eslesme(yeni), ("alarm_clock",), 3)
+            b.bir_kez(f"{mid}:hatirlat", yeni, "hat", "hatirlat",
+                      f"{dk} dk sonra: {eslesme(yeni)} · {turkiye_saati(bas)}", lig, ("alarm_clock",), 3)
         return
 
-    b.bir_kez(f"{mid}:basladi", yeni, "mac", "basladi", "Maç başladı", eslesme(yeni), ("soccer",))
+    b.bir_kez(f"{mid}:basladi", yeni, "mac", "basladi", f"Maç başladı: {eslesme(yeni)}", lig, ("soccer",))
 
-    # Goller: skor arttıysa gol, azaldıysa iptal
+    # Goller: skor arttıysa gol, azaldıysa iptal (VAR)
     eski_ev = (eski or {}).get("ev_skor") or 0
     eski_dep = (eski or {}).get("dep_skor") or 0
     ev, dep = yeni["ev_skor"] or 0, yeni["dep_skor"] or 0
@@ -126,32 +148,22 @@ def degisiklikleri_bildir(b, eski, yeni):
         if ev >= eski_ev and dep >= eski_dep:
             atan = yeni["ev"] if ev > eski_ev else yeni["dep"]
             atan_skor = ev if atan is yeni["ev"] else dep
-            ayrinti = ""
-            goller = [g for g in yeni.get("goller", []) if g["takim"] == atan["id"]]
-            # Gol listesi skorla uyuşuyorsa son golün sahibini yaz
-            if goller and len(goller) == atan_skor:
-                g = goller[-1]
-                ek = " (kendi kalesine)" if g["kk"] else " (penaltı)" if g["pen"] else ""
-                ayrinti = f"\n{g['dk']} {g['oyuncu']}{ek}".rstrip()
-            b.bir_kez(f"{mid}:skor:{ev}-{dep}", yeni, "gol", "gol", f"GOL! {atan['ad']}",
-                      skor_metni(yeni) + ayrinti, ("soccer", "tada"), 5)
+            b.bir_kez(f"{mid}:skor:{ev}-{dep}", yeni, "gol", "gol", f"⚽ GOL! {skor_metni(yeni)}",
+                      gol_ayrintisi(yeni, atan, atan_skor), ("soccer", "tada"), 5)
         else:
-            b.bir_kez(f"{mid}:iptal:{ev}-{dep}", yeni, "gol", "iptal", "Gol iptal / skor düzeltildi",
+            iptal = yeni["ev"] if ev < eski_ev else yeni["dep"]
+            dakika = f" · {yeni['dakika']}" if yeni.get("dakika") else ""
+            b.bir_kez(f"{mid}:iptal:{ev}-{dep}", yeni, "gol", "iptal", f"❌ Gol iptal: {iptal['ad']}{dakika}",
                       skor_metni(yeni), ("x",))
             # İptal edilen skor tekrar olursa yeniden bildirilebilsin
             b.gonderilenler.discard(f"{mid}:skor:{eski_ev}-{eski_dep}")
             b.gonderilenler.discard(f"{mid}:iptal:{ev}-{dep}")
 
     if kod == "STATUS_HALFTIME":
-        b.bir_kez(f"{mid}:devre", yeni, "mac", "devre", "Devre arası", skor_metni(yeni), ("hourglass",), 3)
+        b.bir_kez(f"{mid}:devre", yeni, "mac", "devre", f"Devre arası: {skor_metni(yeni)}", lig, ("hourglass",), 3)
 
     if yeni["durum"] == "post" or kod in BITTI:
-        if ev == dep:
-            sonuc = "Berabere"
-        else:
-            sonuc = f"Kazanan: {(yeni['ev'] if ev > dep else yeni['dep'])['ad']}"
-        b.bir_kez(f"{mid}:bitti", yeni, "son", "bitti", "Maç sona erdi", f"{skor_metni(yeni)}\n{sonuc}",
-                  ("checkered_flag",))
+        b.bir_kez(f"{mid}:bitti", yeni, "son", "bitti", f"Maç sonu: {skor_metni(yeni)}", lig, ("checkered_flag",))
 
 
 # ------------------------------------------------------------- izleme

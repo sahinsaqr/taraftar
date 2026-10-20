@@ -254,6 +254,38 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
 - **Kadrolar:** üstte iki takımın dizilişi (kutular), takım seçici (ev / deplasman), "İLK 11" ve "YEDEKLER" listeleri
   (forma no, ad, mevki). Saha çizimi yok.
 
+## Bildirimler
+
+**Android kanalları** (`bulut.js` → `KANALLAR`; sunucuda `arka_plan/bildirim.py` → `KANAL`, kimlikler aynı):
+
+| Kanal | Ad (Türkçe, ayarlarda görünür) | Önem | Ses / titreşim | FCM türü (konu) |
+|---|---|---|---|---|
+| `goller` | Goller | yüksek (4): ekranın üstünde açılır | özel gol sesi (`res/raw/gol_sesi.ogg`), titreşim, lime ışık | `gol` |
+| `mac_durumu` | Maç başladı · devre arası | normal (3) | varsayılan ses, titreşim | `mac` |
+| `mac_sonucu` | Maç sonucu · ertelemeler | normal (3) | varsayılan ses, titreşim | `son` |
+| `hatirlatma` | Maçtan önce hatırlatma | düşük (2) | sessiz | `hat` |
+
+- Eski tek kanal `maclar` uygulama açılınca silinir. FCM'nin yedek (varsayılan) kanalı `mac_durumu` (AndroidManifest).
+- Kanalın önemi ve sesi ilk oluşturulunca sabitlenir (kullanıcı ayarlardan değiştirebilir). Varsayılanı değiştirmek
+  gerekirse yeni kanal kimliği ver, eskisini sil.
+- Her bildirim: renk lime `#C8F04A`, ikon `ic_stat_taraftar`, `tag` = maç kimliği (aynı maçın yeni bildirimi öncekinin
+  yerine geçer), `data.mac` = maç kimliği (dokununca maç detayı açılır).
+- **Metinler** (başlık / gövde; skorlar `–` ile, saat Türkiye saati):
+  - Gol: "⚽ GOL! Ev 2–1 Deplasman" / "67' Oyuncu · Golü atan takım"; kendi kalesine "67' Oyuncu (k.k.) · golün
+    yazıldığı takım"; penaltı "67' Oyuncu (p) · Takım". Gol listesi skorla uyuşmazsa "67' · Takım".
+  - VAR iptali: "❌ Gol iptal: Takım · 67'" / skor.
+  - "Maç başladı: Ev – Deplasman", "Devre arası: Ev 1–0 Deplasman", "Maç sonu: Ev 2–1 Deplasman" / lig adı.
+  - "Maç ertelendi: Ev – Deplasman" (mac_sonucu kanalı).
+  - "15 dk sonra: Ev – Deplasman · 20:00" / lig adı.
+- Profil > Bildirimler > **Bildirim sesi ve titreşim**: Android'in bu uygulamaya ait bildirim ayarlarını açar
+  (`AyarlarPlugin`; Android 7'de uygulama bilgi ekranı). Web'de gizli.
+- Deneme: GitHub → Actions → "Deneme bildirimi", tür "hepsi" → dört kanala birer bildirim (her biri ayrı etiketle).
+
+**Gol sesi ve lisans:** `android/app/src/main/res/raw/gol_sesi.ogg` (hakem düdüğü: kısa · kısa · uzun, 1,27 sn,
+Vorbis mono 44,1 kHz) bu proje için `araclar/gol_sesi.py` ile tamamen sentezlenmiştir (sinüs ton + modülasyon +
+süzülmüş gürültü); hiçbir kayıt, örnek ya da üçüncü taraf ses kullanılmadı. Telif ve lisans yükümlülüğü yoktur;
+projenin kendi varlığıdır. Yeniden üretmek için: `pip install numpy soundfile` → `python araclar/gol_sesi.py`.
+
 ## Profil ekranı
 
 Yukarıdan aşağı kartlar:
@@ -262,7 +294,7 @@ Yukarıdan aşağı kartlar:
 2. **Bildirimler** (yalnız Android) — 4 anahtar (`role="switch"`), her birinin altında bir satır açıklama:
    Goller / Maç başladı · devre arası / Maç sonucu / Maçtan önce hatırlatma.
    Bildirim izni yoksa üstte izin isteme düğmesi. Altında not: "Bir takımın bildirimlerini tamamen kapatmak için
-   Takımlarım'da o takımın zil simgesine dokun."
+   Takımlarım'da o takımın zil simgesine dokun." ve "Bildirim sesi ve titreşim" satırı (Bildirimler bölümü).
 3. **Görünüm** — Sistem / Açık / Koyu (seçili olan lime zemin). Takım sıralaması ayarı (Elle/Otomatik/Karışık)
    3. aşamada kaldırıldı: sıra her zaman elle (Takımlarım'da sürükle); eski kayıtlı ayar yok sayılır.
 4. **Hakkında** — Gizlilik politikası (mlkcraft.com/privacy#taraftar), Geri bildirim gönder (info@mlkcraft.com),

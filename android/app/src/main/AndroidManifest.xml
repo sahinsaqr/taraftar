@@ -16,7 +16,7 @@
             android:resource="@color/bildirim_rengi" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="maclar" />
+            android:value="mac_durumu" />
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"

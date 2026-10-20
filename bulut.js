@@ -6,7 +6,8 @@
 
    Firestore: kullanicilar/{uid} = { takimlar: [...], bildirim: {gol, mac, son, hat}, guncelleme }
    takimlar[i] = { id, ad, kisa, logo, lig, renk?, renk2?, zil? }  (zil: false = o takımın bildirimleri kapalı)
-   Bildirim konuları (yalnız Android): t{takımID}_{tür}, tür = gol | mac | son | hat */
+   Bildirim konuları (yalnız Android): t{takımID}_{tür}, tür = gol | mac | son | hat
+   Her tür kendi kanalına gelir: goller, mac_durumu, mac_sonucu, hatirlatma (KANALLAR) */
 
 import { FIREBASE_AYAR } from './firebase-ayar.js';
 
@@ -15,6 +16,18 @@ const ZAMAN_ASIMI = 12000;
 const KONU_DEPO = 'ft_konular';   // cihazın abone olduğu konular (fark hesabı için)
 export const BILDIRIM_TURLERI = ['gol', 'mac', 'son', 'hat'];
 export const VARSAYILAN_BILDIRIM = { gol: true, mac: true, son: true, hat: true };
+/** Android bildirim kanalları (arka_plan/bildirim.py → KANAL ile aynı kimlikler; TASARIM.md > Bildirimler).
+    importance: 4 = yüksek (ekranın üstünde açılır), 3 = normal, 2 = düşük (sessiz). */
+const KANALLAR = [
+  { id: 'goller', name: 'Goller', description: 'Takımlarının attığı ve yediği goller, iptal edilen goller',
+    importance: 4, sound: 'gol_sesi.ogg', vibration: true, visibility: 1, lights: true, lightColor: '#C8F04A' },
+  { id: 'mac_durumu', name: 'Maç başladı · devre arası', description: 'Maçın başlaması ve devre arası skoru',
+    importance: 3, vibration: true, visibility: 1 },
+  { id: 'mac_sonucu', name: 'Maç sonucu · ertelemeler', description: 'Maç bitince skor; ertelenen ya da durdurulan maçlar',
+    importance: 3, vibration: true, visibility: 1 },
+  { id: 'hatirlatma', name: 'Maçtan önce hatırlatma', description: 'Maç başlamadan 15 dakika önce',
+    importance: 2, vibration: false, visibility: 1 },
+];
 
 function zamanAsimi(soz, ms = ZAMAN_ASIMI) {
   let z;
@@ -64,7 +77,9 @@ class YerelBulut {
     if (!user) ({ user } = await zamanAsimi(this.auth.signInAnonymously()));
     this.kullanici = kullaniciBicim(user);
     if (this.mesaj) {
-      this.mesaj.createChannel({ id: 'maclar', name: 'Maç bildirimleri', importance: 5 }).catch(() => {});
+      // Kanal ayarları (önem, ses) kanal ilk oluşturulunca sabitlenir; değiştirmek gerekirse yeni kanal kimliği ver
+      for (const k of KANALLAR) this.mesaj.createChannel(k).catch(() => {});
+      this.mesaj.deleteChannel({ id: 'maclar' }).catch(() => {});   // eski tek kanal
     }
     return this.kullanici;
   }

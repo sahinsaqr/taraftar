@@ -79,8 +79,9 @@ class IzleyiciTesti(unittest.TestCase):
         yamala(detay, "KLASOR", self.klasor / "detay")
         yamala(detay, "simdi", lambda: self.saat[0])
         yamala(detay.espn, "mac_detayi", sahte_detay)
+        self.metinler = []
         yamala(bildirim, "gonder", lambda takimlar, tur, baslik, govde, mac_id, olay="":
-               self.gonderilen.append((olay, tur, tuple(takimlar), mac_id)))
+               (self.gonderilen.append((olay, tur, tuple(takimlar), mac_id)), self.metinler.append((olay, baslik, govde))))
         json_yaz(self.klasor / "lig_x.json", {"maclar": [mac_durumu(self.saat[0])]})
 
     def tearDown(self):
@@ -124,6 +125,30 @@ class IzleyiciTesti(unittest.TestCase):
         once = len(self.detay_istekleri)
         detay.eksikleri_yaz([mac_durumu(self.saat[0])])
         self.assertEqual(len(self.detay_istekleri), once)
+
+    def test_bildirim_metinleri(self):
+        self.calistir(timedelta(hours=5, minutes=30))
+        m = {o: (bas, gov) for o, bas, gov in self.metinler if o != "gol"}
+        goller = [(bas, gov) for o, bas, gov in self.metinler if o == "gol"]
+        self.assertRegex(m["hatirlat"][0], r"^1[45] dk sonra: Ev – Dep · 20:00$")   # 17:00 UTC = 20:00 TSİ
+        self.assertEqual(m["basladi"], ("Maç başladı: Ev – Dep", "Test"))
+        self.assertEqual(goller, [("⚽ GOL! Ev 1–0 Dep", "1' Golcü · Ev"), ("⚽ GOL! Ev 2–0 Dep", "60' Golcü (p) · Ev")])
+        self.assertEqual(m["devre"][0], "Devre arası: Ev 1–0 Dep")
+        self.assertEqual(m["bitti"], ("Maç sonu: Ev 2–0 Dep", "Test"))
+
+    def test_gol_iptal_ve_kendi_kalesine(self):
+        b = mac_izle.Bildirici([])
+        eski = {**mac_durumu(BASLAMA + timedelta(minutes=70))}
+        yeni = {**eski, "ev_skor": 1, "dakika": "71'"}
+        mac_izle.degisiklikleri_bildir(b, eski, yeni)
+        self.assertIn(("iptal", "❌ Gol iptal: Ev · 71'", "Ev 1–0 Dep"), self.metinler)
+        kk = {**eski, "dep_skor": 1, "dakika": "75'",
+              "goller": eski["goller"] + [{"takim": "2", "dk": "75'", "oyuncu": "Savunmacı", "pen": False, "kk": True}]}
+        mac_izle.degisiklikleri_bildir(b, eski, kk)
+        self.assertIn(("gol", "⚽ GOL! Ev 2–1 Dep", "75' Savunmacı (k.k.) · Dep"), self.metinler)
+
+    def test_her_tur_kendi_kanalina(self):
+        self.assertEqual(bildirim.KANAL, {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hatirlatma"})
 
     def test_fcm_kosulu_iki_takimi_kapsar(self):
         self.assertEqual(self.eski[(bildirim, "gonder")].__module__, "bildirim")

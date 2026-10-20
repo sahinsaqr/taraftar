@@ -1,6 +1,7 @@
 name: Deneme bildirimi
 
 # Bir takım konusuna örnek bildirim gönderir (arka_plan/test_bildirim.py).
+# "hepsi": dört kanalın her birine birer deneme (goller, mac_durumu, mac_sonucu, hatirlatma).
 on:
   workflow_dispatch:
     inputs:
@@ -11,8 +12,8 @@ on:
       tur:
         description: "Bildirim türü"
         type: choice
-        options: [gol, mac, son, hat]
-        default: gol
+        options: [hepsi, gol, mac, son, hat]
+        default: hepsi
 
 permissions:
   contents: read
