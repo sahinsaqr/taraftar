@@ -1,7 +1,7 @@
 name: Deneme bildirimi
 
 # Bir takım konusuna örnek bildirim gönderir (arka_plan/test_bildirim.py).
-# "hepsi": dört kanalın her birine birer deneme (goller, mac_durumu, mac_sonucu, hatirlatma).
+# "hepsi": dört kanalın her birine birer deneme (goller, mac_durumu, mac_sonucu, hatirlatma_sesli).
 on:
   workflow_dispatch:
     inputs:

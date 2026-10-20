@@ -2,7 +2,7 @@
 
 Uygulama her takip edilen takım için açık olan bildirim türlerinin konusuna
 abone olur: t{takımID}_{tür}, tür = gol | mac | son | hat. Her tür kendi Android
-kanalına gider (KANAL): goller, mac_durumu, mac_sonucu, hatirlatma. Sunucu kimin neyi
+kanalına gider (KANAL): goller, mac_durumu, mac_sonucu, hatirlatma_sesli. Sunucu kimin neyi
 takip ettiğini bilmez; olayı iki takımın ilgili konusuna tek mesajla gönderir
 (koşul: 't1_gol' in topics || 't2_gol' in topics), böylece iki takımı da takip
 eden kişi aynı bildirimi iki kez almaz.
@@ -17,7 +17,7 @@ import os
 
 TURLER = ("gol", "mac", "son", "hat")
 # Her tür kendi Android kanalına gider (kanallar uygulamada bulut.js'te oluşturulur; ses/önem kanaldadır)
-KANAL = {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hatirlatma"}
+KANAL = {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hatirlatma_sesli"}
 RENK = "#C8F04A"          # bildirim vurgusu (lime)
 IKON = "ic_stat_taraftar"  # res/drawable-*dpi
 GOL_SESI = "gol_sesi"      # res/raw/gol_sesi.ogg (Android 8 öncesi; sonrasında kanalın sesi çalar)

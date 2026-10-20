@@ -148,7 +148,7 @@ class IzleyiciTesti(unittest.TestCase):
         self.assertIn(("gol", "⚽ GOL! Ev 2–1 Dep", "75' Savunmacı (k.k.) · Dep"), self.metinler)
 
     def test_her_tur_kendi_kanalina(self):
-        self.assertEqual(bildirim.KANAL, {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hatirlatma"})
+        self.assertEqual(bildirim.KANAL, {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hatirlatma_sesli"})
 
     def test_fcm_kosulu_iki_takimi_kapsar(self):
         self.assertEqual(self.eski[(bildirim, "gonder")].__module__, "bildirim")

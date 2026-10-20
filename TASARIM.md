@@ -268,9 +268,11 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
 | `goller` | Goller | yüksek (4): ekranın üstünde açılır | özel gol sesi (`res/raw/gol_sesi.ogg`), titreşim, lime ışık | `gol` |
 | `mac_durumu` | Maç başladı · devre arası | normal (3) | varsayılan ses, titreşim | `mac` |
 | `mac_sonucu` | Maç sonucu · ertelemeler | normal (3) | varsayılan ses, titreşim | `son` |
-| `hatirlatma` | Maçtan önce hatırlatma | düşük (2) | sessiz | `hat` |
+| `hatirlatma_sesli` | Maçtan önce hatırlatma | normal (3) | varsayılan ses, titreşim | `hat` |
 
-- Eski tek kanal `maclar` uygulama açılınca silinir. FCM'nin yedek (varsayılan) kanalı `mac_durumu` (AndroidManifest).
+- Eski kanallar uygulama açılınca silinir: tek kanal `maclar` ve ilk sürümdeki sessiz `hatirlatma` (düşük önemdi;
+  hatırlatma herkes için sesli olsun diye `hatirlatma_sesli` ile değiştirildi). FCM'nin yedek (varsayılan) kanalı
+  `mac_durumu` (AndroidManifest).
 - Kanalın önemi ve sesi ilk oluşturulunca sabitlenir (kullanıcı ayarlardan değiştirebilir). Varsayılanı değiştirmek
   gerekirse yeni kanal kimliği ver, eskisini sil.
 - Her bildirim: renk lime `#C8F04A`, ikon `ic_stat_taraftar`, `tag` = maç kimliği (aynı maçın yeni bildirimi öncekinin

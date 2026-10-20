@@ -2,7 +2,7 @@
 
 Telefonda uygulamada o takımı takip ediyorsan ve ilgili bildirim türü açıksa
 bildirim gelmeli; Profil > Bildirimler'den tür kapatılınca gelmemeli.
-Her tür kendi Android kanalına gider (goller, mac_durumu, mac_sonucu, hatirlatma).
+Her tür kendi Android kanalına gider (goller, mac_durumu, mac_sonucu, hatirlatma_sesli).
 
 Kullanım:
   python arka_plan/test_bildirim.py <takım_id> [tür]      tür: gol (varsayılan) | mac | son | hat | hepsi
