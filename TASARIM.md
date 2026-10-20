@@ -7,7 +7,7 @@ bir kural değişirse önce burası güncellenir.
 |---|---|
 | 1 | Renkler, yazı tipleri, tema, 4 sekmeli alt menü, Profil ekranı (yapıldı) |
 | 2 | Üst başlık kaldırıldı (aşağı çekip yenile), Maçlar ekranı: Geçmiş / Yaklaşan / Takvim (yapıldı) |
-| 3 | Takımlarım (zil, şu an/son maç/sıradaki, form), basılı tutup sürükleyerek sıralama, Takım ekle (yapıldı) |
+| 3 | Takımlarım (sade kart + zil, dokununca Puan), basılı tutup sürükleyerek sıralama, Takım ekle (yapıldı) |
 | 4 | Puan ekranı, maç detayı |
 
 ## Genel
@@ -48,7 +48,7 @@ Hepsi `style.css` başında CSS değişkeni. Ekranlar renk kodu yazmaz, değişk
 | `--canli` | canlı rozet zemini, canlı nokta | #FF6B4A | #FF6B4A |
 | `--canli-zemin-yazi` | canlı rozet üstündeki yazı | #1B2D4B | #1B2D4B |
 | `--canli-yazi` | canlı yazı | #FFAA96 | #C4391B |
-| `--canli-yazi-ic` | ikinci zemin (iç kutu) üstünde canlı/mağlubiyet yazısı | #FFAA96 | #B5341A (#C4391B burada 4.36:1) |
+| `--canli-yazi-ic` | ikinci zemin (iç kutu) üstünde canlı/mağlubiyet yazısı (şu an kullanan yok; iç kutuya kırmızı yazı gerekirse) | #FFAA96 | #B5341A (#C4391B burada 4.36:1) |
 | `--satir-g` | galibiyet satırı | #3B7158 | #DDEFD9 |
 | `--satir-m` | mağlubiyet satırı | #5C3A52 | #F5DDE3 |
 | `--satir-b` | beraberlik satırı | = kart (#2F4B78) | = kart (#FFFFFF) |
@@ -139,7 +139,10 @@ Kurallar:
 ## Üst başlık ve yenileme
 
 - Ortak üst şerit (logo + "Taraftar" + yenile + "Veri: x önce") **yok**; çift başlık olmaz.
-- Maçlar'da başlık büyük **TARAFTAR** (Barlow Condensed 700): "TARAF" `--yazi`, "TAR" `--vurgu` (`.logo-baslik`).
+- Maçlar'da başlık: solda uygulama ikonu (`ikonlar/ikon.svg`, 44px, yazıyla dikey ortalı, arada 12px) ve büyük
+  **TARAFTAR** (Barlow Condensed 700), tamamı `--yazi` (`.logo-baslik`). İkonun gölgesi `--ikon-golge`
+  (koyu: `0 2px 4px rgba(5,12,25,.4)`, `0 6px 14px rgba(5,12,25,.35)`; açık: `0 2px 4px rgba(27,45,75,.12)`,
+  `0 6px 14px rgba(27,45,75,.14)`), `drop-shadow` olarak (yuvarlatılmış köşeyi izler); ek çerçeve yok.
   Diğer ekranlarda yalnız ekranın kendi başlığı (`.ekran-baslik`: Takımlarım, Puan durumu, Profil).
 - Yenileme: sayfanın en üstündeyken aşağı çek (app.js "Aşağı çekip yenile"; gösterge `#cekYenile`).
   Tarayıcının kendi çek-yenile'si `overscroll-behavior-y: none` ile kapalı. Yatay kaydırma çekme sayılmaz.
@@ -176,15 +179,13 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
 ## Takımlarım
 
 - Başlık "Takımlarım", sağ üstte lime "+ Takım ekle". Takım yoksa boş ekran mesajı + "Takım ekle" düğmesi.
-- Takım kartı (`.takim-kart`), yukarıdan aşağı:
-  - Logo (48px), ad (Barlow Condensed kalın), altında "Lig · x. sırada · y puan"; sağda zil (44px):
-    açık = dolu zil `--vurgu`, kapalı = üstü çizili çizgisel zil `--yazi-2`. `role="switch"`.
-  - İki iç kutu (`--yuzey-2`) yan yana. Solda "ŞU AN" (canlı: rakip logo + kısaltma, skor, dakika; `--canli-yazi-ic`,
-    turuncu kenar) ya da "SON MAÇ" (rakip + skor). Skor bizim takıma göre (biz–onlar); rengi sonuca göre:
-    G `--vurgu`, M `--canli-yazi-ic`, B `--yazi`. Sağda "SIRADAKİ" (rakip · gün saat). Maç yoksa "—".
-  - En altta "FORM" ve son 5 maçın G/B/M rozetleri, en eski solda.
-  - Gol atanlar kartta yok (maç detayına taşınacak).
-  - Açık temada canlı "ŞU AN" kutusu beyaza yakın zeminde (canlı yazı ikinci zeminde 4.5:1'i tutmuyor).
+- Takım kartı sade (`.takim-kart`, ~72px yükseklik, kartlar arası 10px, Derinlik kuralları aynen):
+  solda logo (44px), ortada ad (Barlow Condensed kalın) ve altında "Lig · x. sıra · y puan" (puan durumu yoksa
+  yalnız lig adı), sağda zil (44px). Başka bir şey yok: ŞU AN / SON MAÇ / SIRADAKİ kutuları ve form rozetleri
+  kaldırıldı (bu bilgiler Maçlar'da).
+- Zil: açık = dolu zil `--vurgu`, kapalı = üstü çizili çizgisel zil `--yazi-2`. `role="switch"`.
+- Karta dokununca (sıralama sırasında değil; basılı tutup bırakmanın tıklaması da sayılmaz) Puan sekmesi takımın
+  liginde açılır; takımın satırı ortaya kaydırılır ve kısa süre vurgulanır (`tr.vurgula`). Klavyede Enter/boşluk.
 - **Takım bazında zil:** `takimlar[i].zil === false` = kapalı (Firestore `kullanicilar/{uid}` içindeki takım listesinde;
   kural değişmedi). Kapalı takımın hiçbir FCM konusuna abone olunmaz (`bulut.js` → `abonelikleriEsitle`);
   açılınca Profil'deki türlere göre yeniden abone olunur. Alan yoksa açık sayılır.
@@ -193,7 +194,10 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
 
 - Ayrı "Sırala" düğmesi ve ≡ tutamaç yok. Karta ~0,5 sn basılı tutunca sıralama başlar (SortableJS: `delay: 500`,
   `delayOnTouchOnly`, `touchStartThreshold: 6`; parmak oynarsa normal kaydırma). Farede gecikme yok.
-- Basılı tutulunca: kart hafif büyür ve gölge alır (`.sirala-secili`), kısa titreşim, diğer kartlar soluklaşır,
+- Akıcılık: `forceFallback: true`, `animation: 150`, `fallbackTolerance: 3`, `scrollSensitivity: 80`, `scrollSpeed: 20`.
+  Taşınan kopya yalnız transform ile hareket eder; sürükleme sırasında filtre (logo gölgesi kapatılır), büyük
+  bulanık gölge ve opaklık/transform geçişi yok. Uzun listede en alttaki tek hareketle en üste taşınabilmeli.
+- Basılı tutulunca: kart hafif büyür ve gölge alır (`.sirala-secili`), kısa titreşim, diğer kartlar soluk (geçişsiz),
   hedef yerde kesik çizgili yuva (`.sirala-yer`), ekranın üstünde lime şerit "Sıralama · bırakınca kaydedilir"
   (`body.siralaniyor::after`). Zile basmak sürükleme başlatmaz.
 - Bırakınca sıra hemen kaydedilir (cihaz + Firestore `takimlar` dizisi). Bu sıra her yerde kullanılır

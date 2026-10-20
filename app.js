@@ -50,6 +50,7 @@ const durum = {
   islem: false,         // giriş/çıkış/silme sürüyor
   onay: null,           // sayfa içi pencere: 'sil' | 'gizlilik'
   hedefMac: null,       // bildirime dokunulunca gidilecek maç
+  puanVurgu: null,      // Takımlarım'dan gelince Puan'da vurgulanacak takım
   izin: null,           // bildirim izni: granted | denied | prompt… (web'de null)
   surum: '',            // package.json → version
 };
@@ -167,7 +168,7 @@ function logoYedek(takim, boyut, px) {
 }
 
 function logoHtml(takim, boyut = 'kucuk') {
-  const px = { kucuk: 24, orta: 32, '': 40 }[boyut] ?? 40;
+  const px = { kucuk: 24, orta: 32, buyuk: 44, '': 40 }[boyut] ?? 40;
   let url = takim.logo || '';
   const m = url.match(/^https:\/\/a\.espncdn\.com(\/i\/.+\.png)/);
   if (m) url = `https://a.espncdn.com/combiner/i?img=${m[1]}&w=${px * 2}&h=${px * 2}`;
@@ -275,6 +276,7 @@ function ciz() {
   icerik.innerHTML = (durum.hata && durum.sekme !== 'profil' ? `<div class="uyari">${kacis(durum.hata)}</div>` : '') +
     (ciziciler[durum.sekme] || cizMaclar)() + onayKutusu();
   hedefeGit();
+  puanaGit();
   if (durum.sekme === 'takimlar') suruklemeKur();
 }
 
@@ -287,17 +289,6 @@ function bosEkran(baslik, metin, dugme = true) {
 }
 
 // ---- Takımlarım
-function takimDurumu(t, maclar) {
-  const tm = takimMaclari(t.id, maclar);
-  const bitenler = tm.filter((m) => m.durum === 'post' && m.ev_skor != null);
-  return {
-    canli: tm.find((m) => m.durum === 'in'),
-    sonraki: tm.find((m) => m.durum === 'pre' && !ERTELENDI.has(m.durum_kodu) && new Date(m.tarih) > Date.now() - 3 * 3600e3),
-    son: bitenler[bitenler.length - 1],
-    form: bitenler.slice(-5).map((m) => sonuc(m, t.id)),   // en eski solda
-  };
-}
-
 const ARTI = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/></svg>';
 // Zil: açıkken dolu, kapalıyken çizgili ve üstü çizili
 const ZIL_ACIK = '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5a6.5 6.5 0 0 0-6.5 6.5v3.6L3.8 15.5A1 1 0 0 0 4.7 17h14.6a1 1 0 0 0 .9-1.5l-1.7-2.9V9A6.5 6.5 0 0 0 12 2.5zM9.5 18.5a2.5 2.5 0 0 0 5 0z"/></svg>';
@@ -306,57 +297,52 @@ const KAPAT = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true
 const IPUCU_DEPO = 'ft_ipucu_sirala';   // sıralama ipucu kapatıldıysa true
 const zilAcik = (t) => t.zil !== false;
 
-// "ŞU AN" / "SON MAÇ" / "SIRADAKİ" kutularında rakip: küçük logo + kısaltma
-function rakip(m, id) {
-  const r = m.ev.id === id ? m.dep : m.ev;
-  const lt = ligTakimi(r.id) || {};
-  return `${logoHtml(r)}<span class="tk-rakip" title="${kacis(r.ad)}">${kacis((r.kisa || lt.kisa || r.ad).slice(0, 4).toLocaleUpperCase('tr'))}</span>`;
-}
-// skor bizim takıma göre: "2-1" = biz 2, onlar 1
-const bizimSkor = (m, id) => (m.ev.id === id ? `${m.ev_skor ?? 0}-${m.dep_skor ?? 0}` : `${m.dep_skor ?? 0}-${m.ev_skor ?? 0}`);
-
-function takimKarti(t, d) {
+// Sade kart: logo, ad, "Lig · x. sıra · y puan", zil. Maç bilgisi Maçlar sekmesinde.
+// Karta dokununca Puan sekmesi takımın liginde açılır (sıralama sırasında değil).
+function takimKarti(t) {
   const tablo = sira(t.id, t.lig);
-  const alt = [ligAdi(t.lig), tablo && `${tablo.sira}. sırada`, tablo && `${tablo.p} puan`].filter(Boolean).join(' · ');
-  let sol;
-  if (d.canli) {
-    sol = `<div class="tk-kutu canli"><span class="tk-etiket"><span class="nokta" aria-hidden="true"></span>Şu an</span>
-      <div class="tk-deger">${rakip(d.canli, t.id)}<b class="tk-skor canli-ic">${bizimSkor(d.canli, t.id)}</b><span class="canli-ic">${kacis(canliDakika(d.canli))}</span></div></div>`;
-  } else if (d.son) {
-    const s = sonuc(d.son, t.id);
-    sol = `<div class="tk-kutu"><span class="tk-etiket">Son maç</span>
-      <div class="tk-deger">${rakip(d.son, t.id)}<b class="tk-skor s-${s}" aria-label="${SONUC_ADLARI[s]} ${bizimSkor(d.son, t.id)}">${bizimSkor(d.son, t.id)}</b></div></div>`;
-  } else {
-    sol = '<div class="tk-kutu"><span class="tk-etiket">Son maç</span><div class="tk-deger tk-yok">—</div></div>';
-  }
-  const sag = d.sonraki
-    ? `<div class="tk-kutu"><span class="tk-etiket">Sıradaki</span>
-      <div class="tk-deger">${rakip(d.sonraki, t.id)}</div>
-      <div class="tk-zaman">${kacis(kisaGun(new Date(d.sonraki.tarih)))} · <b>${saatBicim.format(new Date(d.sonraki.tarih))}</b></div></div>`
-    : '<div class="tk-kutu"><span class="tk-etiket">Sıradaki</span><div class="tk-deger tk-yok">—</div></div>';
+  const alt = [ligAdi(t.lig), tablo && `${tablo.sira}. sıra`, tablo && `${tablo.p} puan`].filter(Boolean).join(' · ');
   const acik = zilAcik(t);
   return `<article class="kart takim-kart" id="takim-${kacis(t.id)}" data-id="${kacis(t.id)}" tabindex="0"
-      aria-label="${kacis(t.ad)}" aria-description="Sıralamak için basılı tutup sürükle ya da Alt ve ok tuşlarını kullan">
-    <div class="tk-ust">${logoHtml(t, 'buyuk')}
-      <div class="tk-bilgi"><div class="ad">${kacis(t.ad)}</div><div class="tk-alt">${kacis(alt)}</div></div>
-      <button class="zil${acik ? ' acik' : ''}" data-zil="${kacis(t.id)}" role="switch" aria-checked="${acik}"
-        aria-label="${kacis(t.ad)} bildirimleri">${acik ? ZIL_ACIK : ZIL_KAPALI}</button>
-    </div>
-    <div class="tk-kutular">${sol}${sag}</div>
-    <div class="tk-form"><span class="tk-etiket">Form</span>
-      ${d.form.length ? d.form.map((f) => `<span class="rozet ${f}" title="${SONUC_ADLARI[f]}">${f}</span>`).join('') : '<span class="tk-yok">—</span>'}</div>
+      aria-label="${kacis(t.ad)}, ${kacis(alt)}. Puan durumunu aç" aria-description="Sıralamak için basılı tutup sürükle ya da Alt ve ok tuşlarını kullan">
+    ${logoHtml(t, 'buyuk')}
+    <div class="tk-bilgi"><div class="ad">${kacis(t.ad)}</div><div class="tk-alt">${kacis(alt)}</div></div>
+    <button class="zil${acik ? ' acik' : ''}" data-zil="${kacis(t.id)}" role="switch" aria-checked="${acik}"
+      aria-label="${kacis(t.ad)} bildirimleri">${acik ? ZIL_ACIK : ZIL_KAPALI}</button>
   </article>`;
+}
+
+// Puan sekmesini takımın liginde aç; satırı görünür yap ve kısa süre vurgula (puanaGit)
+function takimPuaninaGit(id) {
+  const t = durum.takip.find((x) => x.id === id);
+  if (!t || surukleniyor || Date.now() - sonSiralama < 400) return;
+  if (durum.ligler.some((l) => l.kod === t.lig)) durum.puanLig = t.lig;
+  durum.puanVurgu = t.id;
+  sekmeyeGec('puan');
+}
+
+function puanaGit() {
+  if (!durum.puanVurgu || durum.sekme !== 'puan') return;
+  const satir = document.querySelector(`tr[data-takim="${CSS.escape(durum.puanVurgu)}"]`);
+  if (!satir) return;   // lig verisi gelince ciz() yeniden dener
+  durum.puanVurgu = null;
+  // seçili lig düğmesi yatay şeritte ortada görünsün
+  const cip = document.querySelector('.secici .cip.aktif');
+  if (cip) cip.parentElement.scrollLeft = cip.offsetLeft - (cip.parentElement.clientWidth - cip.offsetWidth) / 2;
+  requestAnimationFrame(() => {
+    satir.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    satir.classList.add('vurgula');
+  });
 }
 
 function cizTakimlar() {
   const ust = `<div class="ekran-ust"><h2 class="ekran-baslik">Takımlarım</h2>
     <button class="dugme kucuk" data-git="ekle">${ARTI} Takım ekle</button></div>`;
   if (!durum.takip.length) return ust + bosEkran('Henüz takım eklemedin', 'Takip etmek istediğin takımları ekle; maçları, skorları ve puan durumu burada görünsün.');
-  const maclar = tumMaclar();
   const ipucu = durum.takip.length > 1 && !depoOku(IPUCU_DEPO, false)
     ? `<div class="ipucu" role="note"><span>Sıralamak için karta basılı tut, sonra yukarı aşağı sürükle</span>
         <button class="ipucu-kapat" id="ipucuKapat" aria-label="İpucunu kapat">${KAPAT}</button></div>` : '';
-  return `${ust}${ipucu}<div class="kartlar iki" id="takimListe">${durum.takip.map((t) => takimKarti(t, takimDurumu(t, maclar))).join('')}</div>`;
+  return `${ust}${ipucu}<div class="kartlar takim-listesi" id="takimListe">${durum.takip.map(takimKarti).join('')}</div>`;
 }
 
 function zilDegistir(id) {
@@ -378,6 +364,9 @@ let siralayici = null;
 let surukleniyor = false;   // kart seçildi (basılı tutuldu) ya da sürükleniyor
 let siralamaIptal = false;  // geri tuşu sürüklemeyi iptal etti
 let cizBekliyor = false;    // sürüklerken gelen yenileme, bırakınca çizilir
+let sonSiralama = 0;        // basılı tutup bırakınca gelen tıklama kartı açmasın
+let secimZamani = 0;        // kart ne zaman seçildi (farede basar basmaz, dokunmada 0,5 sn sonra)
+let suruklemeBasladi = false;
 
 // Android titreşimi (@capacitor/haptics): tutunca hafif darbe, bırakınca 12 ms'lik tık
 const titret = {
@@ -396,7 +385,12 @@ function siraKaydet(yeniIdler) {
 
 // Sortable bırakınca önce 'unchoose' sonra 'end' çağırır; bekleyen çizim ikisinden sonra yapılır
 function siralamaBitti() {
+  // Sortable kısa dokunmada (kart seçilmeden) de 'unchoose' gönderir: o zaman yapacak bir şey yok, tıklama kartı açar
+  if (!surukleniyor) return;
+  // gerçekten sürüklendiyse ya da uzun basıldıysa ardından gelen tıklama yok sayılır (farede kısa tık kartı açar)
+  if (suruklemeBasladi || Date.now() - secimZamani > 350) sonSiralama = Date.now();
   surukleniyor = false;
+  suruklemeBasladi = false;
   document.body.classList.remove('siralaniyor');
   if (cizBekliyor) { cizBekliyor = false; setTimeout(ciz, 0); }
 }
@@ -414,21 +408,26 @@ async function suruklemeKur() {
     delay: 500,                     // basılı tut
     delayOnTouchOnly: true,         // farede hemen sürüklenir
     touchStartThreshold: 6,         // parmak oynarsa kaydırmadır
-    forceFallback: true,
+    forceFallback: true,            // taşınan kopya yalnız transform ile hareket eder
     fallbackOnBody: true,
     fallbackTolerance: 3,
-    animation: 180,
+    animation: 150,
     chosenClass: 'sirala-secili',
     ghostClass: 'sirala-yer',
     fallbackClass: 'sirala-tasinan',
-    scrollSensitivity: 120,
-    scrollSpeed: 14,
-    onChoose: () => {
+    scrollSensitivity: 80,
+    scrollSpeed: 20,
+    onChoose: (e) => {
       surukleniyor = true;
       siralamaIptal = false;
-      document.body.classList.add('siralaniyor');
-      titret.tut();
+      secimZamani = Date.now();
+      // dokunmada seçim = 0,5 sn basılı tutuldu; farede şerit sürükleme başlayınca çıkar
+      if (/^touch/.test(e.originalEvent?.type || '') || e.originalEvent?.pointerType === 'touch') {
+        document.body.classList.add('siralaniyor');
+        titret.tut();
+      }
     },
+    onStart: () => { suruklemeBasladi = true; document.body.classList.add('siralaniyor'); },
     onUnchoose: siralamaBitti,      // basılı tutup sürüklemeden bırakınca da
     onEnd: () => {
       const iptal = siralamaIptal;
@@ -659,7 +658,7 @@ function takvimAyDegistir(yon) {
 }
 
 function cizMaclar() {
-  const baslik = '<div class="ekran-ust"><h1 class="logo-baslik">TARAF<span>TAR</span></h1></div>';
+  const baslik = '<div class="ekran-ust"><img class="baslik-ikon" src="ikonlar/ikon.svg" width="44" height="44" alt=""><h1 class="logo-baslik">TARAFTAR</h1></div>';
   if (!durum.takip.length) return baslik + bosEkran('Maç listesi boş', 'Önce takip edeceğin takımları ekle.');
   const zaman = sonVeriZamani();
   const uyari = zaman && Date.now() - new Date(zaman) > ESKI_VERI
@@ -692,7 +691,7 @@ function cizPuan() {
     const aciklama = new Map();
     const satirlar = tablo.satirlar.map((s) => {
       if (s.renk && s.not) aciklama.set(turkceMetin(s.not), s.renk);
-      return `<tr class="${ids.has(s.takim.id) ? 'takipte' : ''}">
+      return `<tr class="${ids.has(s.takim.id) ? 'takipte' : ''}" data-takim="${kacis(s.takim.id)}">
         <td class="sira" style="--serit:${kacis(s.renk || 'transparent')}">${s.sira}</td>
         <td class="takim-hucre"><div class="ic">${logoHtml(s.takim)}<span class="isim">${kacis(s.takim.ad)}</span></div></td>
         <td>${s.o}</td><td class="gizle-dar">${s.g}</td><td class="gizle-dar">${s.b}</td><td class="gizle-dar">${s.m}</td>
@@ -1103,7 +1102,11 @@ if (Bulut.yerel) window.Capacitor.Plugins.App?.addListener('backButton', geriTus
 
 document.addEventListener('click', (e) => {
   const h = e.target.closest('button, a');
-  if (!h) return;
+  if (!h) {
+    const kart = e.target.closest('.takim-kart');
+    if (kart) takimPuaninaGit(kart.dataset.id);
+    return;
+  }
   if (h.dataset.sekme || h.dataset.git) {
     sekmeyeGec(h.dataset.sekme || h.dataset.git);
   } else if (h.dataset.macsekme) { durum.macSekme = h.dataset.macsekme; ciz(); window.scrollTo({ top: 0 }); }
@@ -1129,6 +1132,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && durum.onay) { durum.onay = null; ciz(); }
   else if (e.key === 'Escape' && surukleniyor) siralamayiIptalEt();
+  else if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('takim-kart')) { e.preventDefault(); takimPuaninaGit(e.target.dataset.id); }
   else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.target.classList?.contains('takim-kart')) {
     e.preventDefault();
     takimTasi(e.target.dataset.id, e.key === 'ArrowUp' ? -1 : 1);
