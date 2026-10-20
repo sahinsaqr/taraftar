@@ -30,24 +30,16 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="ust">
-    <div class="ust-ic">
-      <div class="marka">
-        <img src="ikonlar/ikon.svg" alt="" width="28" height="28">
-        <h1>Taraftar</h1>
-      </div>
-      <button class="yenile" id="yenileBtn" aria-label="Yenile" title="Yenile">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-      </button>
-    </div>
-    <p class="durum-satiri" id="durumSatiri">Yükleniyor…</p>
-  </header>
+  <!-- Aşağı çekip yenile göstergesi (app.js) -->
+  <div class="cek-yenile" id="cekYenile" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="22" height="22"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4.5H15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
 
   <main id="icerik" class="icerik" tabindex="-1"></main>
 
   <nav class="alt-menu" aria-label="Bölümler">
     <button data-sekme="maclar" class="aktif" aria-current="page">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 8.2 3.6 2.6-1.4 4.2H9.8l-1.4-4.2z"/><path d="M12 8.2V3M15.6 10.8l4.9-1.6M14.2 15l3 4.2M9.8 15l-3 4.2M8.4 10.8 3.5 9.2"/></svg>
       <span>Maçlar</span>
     </button>
     <button data-sekme="takimlar">

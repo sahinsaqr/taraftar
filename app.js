@@ -42,7 +42,10 @@ const durum = {
   ligVeri: {},          // kod -> lig_*.json içeriği
   canli: null,
   sekme: 'maclar',      // maclar | takimlar | ekle (Takımlar'ın alt ekranı) | puan | profil
-  macSekme: 'yaklasan',
+  macSekme: 'yaklasan',  // gecmis | yaklasan | takvim
+  gecmisTakim: 'tumu',  // Geçmiş'te seçili takım
+  takvimAy: null,       // Takvim'de gösterilen ay (ayın 1'i); null = bu ay
+  takvimGun: null,      // Takvim'de seçili gün (gunAnahtari); null = bugün
   puanLig: null,
   ekleLig: null,
   arama: '',
@@ -202,9 +205,7 @@ async function ligYukle(kod) {
   catch (h) { console.warn(h); }
 }
 
-async function yukle({ sessiz = false } = {}) {
-  const btn = $('#yenileBtn');
-  btn.classList.add('donuyor');
+async function yukle({ cekme = false } = {}) {
   try {
     const ligler = await jsonGetir('veri/ligler.json');
     durum.ligler = ligler.ligler || [];
@@ -217,10 +218,9 @@ async function yukle({ sessiz = false } = {}) {
     jsonGetir('veri/canli.json').then((c) => { durum.canli = c; }).catch(() => {}),
   ]);
   durum.sonYukleme = new Date();
-  btn.classList.remove('donuyor');
   ciz();
   zamanlayiciKur();
-  if (!sessiz) durumSatiri();
+  if (cekme) tost(durum.hata ? 'Veriler alınamadı' : 'Güncellendi');
 }
 
 function tumMaclar() {
@@ -266,15 +266,6 @@ function sonVeriZamani() {
   return zamanlar.length ? zamanlar.reduce((a, b) => (new Date(a) > new Date(b) ? a : b)) : null;
 }
 
-function durumSatiri() {
-  const s = $('#durumSatiri');
-  const verisi = sonVeriZamani();
-  const canliSay = tumMaclar().filter((m) => m.durum === 'in' && ilgili(m)).length;
-  const parcalar = [];
-  if (canliSay) parcalar.push(`<span class="nokta"></span>${canliSay} canlı maç`);
-  parcalar.push(`Veri: ${goreceliZaman(verisi)}`);
-  s.innerHTML = parcalar.join(' · ');
-}
 const ilgili = (m) => { const ids = takipIdler(); return ids.has(m.ev.id) || ids.has(m.dep.id); };
 
 function ciz() {
@@ -292,7 +283,6 @@ function ciz() {
   const ciziciler = { takimlar: cizTakimlar, maclar: cizMaclar, puan: cizPuan, ekle: cizEkle, profil: cizProfil };
   icerik.innerHTML = (durum.hata && durum.sekme !== 'profil' ? `<div class="uyari">${kacis(durum.hata)}</div>` : '') +
     (ciziciler[durum.sekme] || cizMaclar)() + onayKutusu();
-  durumSatiri();
   hedefeGit();
   if (durum.sirala && durum.sekme === 'takimlar') suruklemeKur();
 }
@@ -307,43 +297,6 @@ function bosEkran(baslik, metin, dugme = true) {
 
 function takimSatiri(t, skor, sinif) {
   return `<div class="taraf ${sinif}">${logoHtml(t)}<span class="isim">${kacis(t.ad)}</span>${skor == null ? '' : `<span class="skor">${skor}</span>`}</div>`;
-}
-
-function macHtml(m, { ligGoster = true } = {}) {
-  const d = macDurumu(m);
-  const ids = takipIdler();
-  const oynandi = m.durum !== 'pre';
-  let evS = '', depS = '';
-  if (m.durum === 'post' && m.ev_skor != null) {
-    evS = m.ev_skor > m.dep_skor ? 'kazandi' : m.ev_skor < m.dep_skor ? 'kaybetti' : '';
-    depS = m.dep_skor > m.ev_skor ? 'kazandi' : m.dep_skor < m.ev_skor ? 'kaybetti' : '';
-  }
-  if (ids.has(m.ev.id)) evS += ' takipte';
-  if (ids.has(m.dep.id)) depS += ' takipte';
-  const goller = (m.goller || []).filter((g) => g.oyuncu)
-    .map((g) => `${kacis(g.dk)} ${kacis(g.oyuncu)}${g.pen ? ' (P)' : ''}${g.kk ? ' (KK)' : ''}`).join(', ');
-  return `<div class="mac ${d.tip === 'canli' ? 'canli' : ''}">
-    <div class="saat">${d.tip === 'canli' ? '<span class="nokta"></span>' : ''}${kacis(d.yazi)}${d.alt && d.tip !== 'canli' ? `<small>${d.alt}</small>` : ''}</div>
-    <div class="taraflar">
-      ${takimSatiri(m.ev, oynandi ? m.ev_skor ?? 0 : null, evS)}
-      ${takimSatiri(m.dep, oynandi ? m.dep_skor ?? 0 : null, depS)}
-      ${goller ? `<div class="goller">⚽ ${goller}</div>` : ''}
-      ${ligGoster ? `<div class="lig-etiket">${kacis(ligAdi(m.lig))}</div>` : ''}
-    </div>
-  </div>`;
-}
-
-function gunlereGore(maclar, ters = false) {
-  const gruplar = [];
-  let son = null;
-  const liste = ters ? [...maclar].reverse() : maclar;
-  for (const m of liste) {
-    const d = new Date(m.tarih);
-    const a = gunAnahtari(d);
-    if (a !== son) { gruplar.push(`<div class="gun-baslik">${kacis(gunEtiketi(d))}</div>`); son = a; }
-    gruplar.push(macHtml(m));
-  }
-  return `<div class="kart mac-listesi">${gruplar.join('')}</div>`;
 }
 
 // ---- Takımlarım
@@ -499,28 +452,228 @@ function sira(id, kod) {
   return null;
 }
 
-// ---- Maçlar
-function cizMaclar() {
-  if (!durum.takip.length) return bosEkran('Maç listesi boş', 'Önce takip edeceğin takımları ekle.');
-  const maclar = tumMaclar().filter(ilgili);
-  const simdi = Date.now();
-  const canli = maclar.filter((m) => m.durum === 'in');
-  const yaklasan = maclar.filter((m) => m.durum === 'pre' && new Date(m.tarih) > simdi - 3 * 3600e3);
-  const biten = maclar.filter((m) => m.durum === 'post' || (m.durum === 'pre' && ERTELENDI.has(m.durum_kodu) && new Date(m.tarih) < simdi));
-  const sekmeler = `<div class="bolmeli" role="tablist">
-    <button data-macsekme="yaklasan" class="${durum.macSekme === 'yaklasan' ? 'aktif' : ''}">Yaklaşan</button>
-    <button data-macsekme="sonuclar" class="${durum.macSekme === 'sonuclar' ? 'aktif' : ''}">Sonuçlar</button>
-  </div>`;
-  let govde = '';
-  if (canli.length) govde += `<h2 class="bolum-baslik"><span class="nokta"></span>Şu an oynanıyor</h2>` + gunlereGore(canli);
-  if (durum.macSekme === 'yaklasan') {
-    govde += `<h2 class="bolum-baslik">Yaklaşan maçlar</h2>` +
-      (yaklasan.length ? gunlereGore(yaklasan.slice(0, 40)) : '<div class="kart bos">Yaklaşan maç bulunamadı.</div>');
-  } else {
-    govde += `<h2 class="bolum-baslik">Son sonuçlar</h2>` +
-      (biten.length ? gunlereGore(biten.slice(-40), true) : '<div class="kart bos">Henüz sonuç yok.</div>');
+// ---- Maçlar: Geçmiş | Yaklaşan | Takvim
+const MAC_SEKMELERI = { gecmis: 'Geçmiş', yaklasan: 'Yaklaşan', takvim: 'Takvim' };
+const ESKI_VERI = 3 * 3600e3;   // bundan eski veri Maçlar'ın üstünde uyarı şeridiyle gösterilir
+const TAKVIM_SIMGE = '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 10h17M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const OK = (yon) => `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="${yon < 0 ? 'm15 5-7 7 7 7' : 'm9 5 7 7-7 7'}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const HAFTA_GUNLERI = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'];
+const SONUC_ADLARI = { G: 'Galibiyet', B: 'Beraberlik', M: 'Mağlubiyet' };
+
+const gunAdKisa = new Intl.DateTimeFormat('tr-TR', { weekday: 'short' });
+const ayKisa = new Intl.DateTimeFormat('tr-TR', { month: 'short' });
+const ayYil = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' });
+const bugunMu = (d) => gunAnahtari(d) === gunAnahtari(new Date());
+const anahtarTarih = (a) => { const [y, ay, g] = a.split('-').map(Number); return new Date(y, ay, g); };
+
+// "Bugün", "Yarın", "Dün" ya da "Cmt 25 Eki"
+function kisaGun(d) {
+  const e = gunEtiketi(d, true);
+  return ['Bugün', 'Yarın', 'Dün'].includes(e) ? e : `${gunAdKisa.format(d)} ${d.getDate()} ${ayKisa.format(d)}`;
+}
+
+// "4 saat önce", "2 gün önce" (uyarı şeridi)
+function eskiZaman(iso) {
+  const sa = (Date.now() - new Date(iso)) / 3600e3;
+  return sa < 48 ? `${Math.max(1, Math.round(sa))} saat önce` : `${Math.round(sa / 24)} gün önce`;
+}
+
+/** ESPN hafta/tur vermiyor: lig dosyasındaki sezon maçlarında her takımın o ligdeki kaçıncı maçı
+    olduğundan çıkarılır (iki takımdan büyüğü; ertelenip ileri atılan maçlarda bir kayabilir).
+    Lig: en fazla 2×(takım-1) hafta; UEFA lig aşaması 8 hafta, sonrası gösterilmez. */
+const haftaOnbellek = new WeakMap();
+function hafta(m) {
+  const veri = durum.ligVeri[m.lig];
+  if (!veri) return null;
+  let h = haftaOnbellek.get(veri);
+  if (!h) {
+    const sayac = new Map();
+    h = { harita: new Map() };
+    for (const x of [...(veri.maclar || [])].sort((a, b) => new Date(a.tarih) - new Date(b.tarih))) {
+      const a = (sayac.get(x.ev.id) || 0) + 1;
+      const b = (sayac.get(x.dep.id) || 0) + 1;
+      sayac.set(x.ev.id, a);
+      sayac.set(x.dep.id, b);
+      h.harita.set(x.id, Math.max(a, b));
+    }
+    h.sinir = m.lig.startsWith('uefa.') ? 8 : 2 * (sayac.size - 1);
+    haftaOnbellek.set(veri, h);
   }
-  return `<div class="ekran-ust"><h2 class="ekran-baslik">Maçlar</h2></div>` + sekmeler + govde;
+  const n = h.harita.get(m.id);
+  return n && n <= h.sinir ? n : null;
+}
+const ligSatiri = (m) => { const h = hafta(m); return `${ligAdi(m.lig)}${h ? ` · ${h}. Hafta` : ''}`; };
+
+// Canlı maç: dakika yazısı ve ilerleme (90 dakikaya göre; uzatmalarda dolu)
+const canliDakika = (m) => (m.durum_kodu === 'STATUS_HALFTIME' ? 'DA' : m.dakika || '');
+function canliYuzde(m) {
+  if (m.durum_kodu === 'STATUS_HALFTIME') return 50;
+  const dk = String(m.dakika || '').match(/\d+/g)?.reduce((a, b) => a + Number(b), 0) || 0;   // 45'+2' → 47
+  return Math.min(100, Math.round((dk / 90) * 100));
+}
+
+/** Takip edilen takıma göre sonuç; iki takım da takipteyse (ya da maç bitmediyse) null */
+function takipSonucu(m, ids, secili) {
+  if (secili) return sonuc(m, secili);
+  const ev = ids.has(m.ev.id), dep = ids.has(m.dep.id);
+  if (ev === dep) return null;
+  return sonuc(m, ev ? m.ev.id : m.dep.id);
+}
+
+const canliRozet = (m) => `<span class="canli-rozet"><span class="nokta" aria-hidden="true"></span>CANLI · ${kacis(canliDakika(m))}</span>`;
+
+// Yaklaşan: her maç ayrı kart; ev sahibi solda, deplasman sağda
+function macKarti(m, ids) {
+  const canli = m.durum === 'in';
+  const d = new Date(m.tarih);
+  const taraf = (t) => `<div class="mk-taraf${ids.has(t.id) ? ' takipte' : ''}">${logoHtml(t, '')}<span class="mk-ad">${kacis(t.ad)}</span></div>`;
+  let orta;
+  if (canli) {
+    orta = `<div class="mk-skor" aria-label="Skor ${m.ev_skor ?? 0} - ${m.dep_skor ?? 0}">${m.ev_skor ?? 0}<span aria-hidden="true">:</span>${m.dep_skor ?? 0}</div>`;
+  } else {
+    const saat = ERTELENDI.has(m.durum_kodu) ? 'ERT' : saatBicim.format(d);
+    orta = `<div class="mk-gun">${kacis(kisaGun(d))}</div><div class="mk-saat${bugunMu(d) ? ' bugun' : ''}">${saat}</div>`;
+  }
+  const yuzde = canli ? canliYuzde(m) : 0;
+  return `<article class="kart mac-kart${canli ? ' canli' : ''}">
+    ${canli ? `<div class="mk-rozet">${canliRozet(m)}</div>` : ''}
+    <div class="mk-lig">${kacis(ligSatiri(m))}</div>
+    <div class="mk-govde">${taraf(m.ev)}<div class="mk-orta">${orta}</div>${taraf(m.dep)}</div>
+    ${canli ? `<div class="ilerleme" role="progressbar" aria-label="Maç süresi" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${yuzde}"><span style="width:${yuzde}%"></span></div>` : ''}
+  </article>`;
+}
+
+function cizYaklasan(maclar, ids) {
+  const simdi = Date.now();
+  // önce canlı maçlar (önce başlayan üstte), sonra başlama saatine göre; liste zaten tarihe göre sıralı
+  const liste = [
+    ...maclar.filter((m) => m.durum === 'in'),
+    ...maclar.filter((m) => m.durum === 'pre' && new Date(m.tarih) > simdi - 3 * 3600e3),
+  ].slice(0, 40);
+  if (!liste.length) return '<div class="kart bos">Yaklaşan maç bulunamadı.</div>';
+  return `<div class="kartlar sik">${liste.map((m) => macKarti(m, ids)).join('')}</div>`;
+}
+
+/** Sonuç satırı (Geçmiş ve Takvim): üstte rozet + tarih / sağda bilgi; altta ev - skor - deplasman */
+function sonucSatiri(m, ids, { s = null, ust = kacis(kisaGun(new Date(m.tarih))), sag = kacis(ligAdi(m.lig)), orta, sinif = '' } = {}) {
+  const ad = (t, yon) => `<span class="ss-ad ${yon}${ids.has(t.id) ? ' takipte' : ''}">${kacis(t.ad)}</span>`;
+  orta ??= `${m.ev_skor ?? 0} - ${m.dep_skor ?? 0}`;
+  return `<div class="sonuc-satir${s ? ` s-${s}` : ''}${sinif ? ` ${sinif}` : ''}">
+    <div class="ss-ust"><span class="ss-sol">${s ? `<span class="rozet ${s}" title="${SONUC_ADLARI[s]}">${s}</span>` : ''}${ust}</span><span class="ss-sag">${sag}</span></div>
+    <div class="ss-alt">${logoHtml(m.ev)}${ad(m.ev, 'ev')}<span class="ss-orta">${orta}</span>${ad(m.dep, 'dep')}${logoHtml(m.dep)}</div>
+  </div>`;
+}
+
+function gecmisSecici() {
+  const sec = durum.gecmisTakim;
+  const secenekler = [['tumu', 'Tümü', null], ...durum.takip.map((t) => [t.id, t.ad, t])];
+  if (durum.takip.length <= 5) {
+    return `<div class="secici" role="group" aria-label="Takım seç">${secenekler.map(([id, ad, t]) =>
+      `<button class="cip${sec === id ? ' aktif' : ''}" data-gecmistakim="${kacis(id)}" aria-pressed="${sec === id}">${t ? logoHtml(t) : ''}${kacis(ad)}</button>`).join('')}</div>`;
+  }
+  return `<label class="acilir"><span class="gorunmez">Takım seç</span>
+    <select id="gecmisTakim">${secenekler.map(([id, ad]) => `<option value="${kacis(id)}"${sec === id ? ' selected' : ''}>${kacis(ad)}</option>`).join('')}</select></label>`;
+}
+
+function cizGecmis(maclar, ids) {
+  if (durum.gecmisTakim !== 'tumu' && !ids.has(durum.gecmisTakim)) durum.gecmisTakim = 'tumu';
+  const secili = durum.gecmisTakim === 'tumu' ? null : durum.gecmisTakim;
+  const liste = maclar.filter((m) => m.durum === 'post' && m.ev_skor != null &&
+    (secili ? m.ev.id === secili || m.dep.id === secili : true)).reverse().slice(0, 60);
+  let ozet = '';
+  if (secili) {
+    const say = { G: 0, B: 0, M: 0 };
+    for (const m of liste) say[sonuc(m, secili)]++;
+    ozet = `<div class="ozet">${Object.entries(say).map(([s, n]) =>
+      `<div class="ozet-kutu s-${s}"><b>${n}</b><span>${SONUC_ADLARI[s]}</span></div>`).join('')}</div>`;
+  }
+  const satirlar = liste.length
+    ? `<div class="satirlar">${liste.map((m) => sonucSatiri(m, ids, { s: takipSonucu(m, ids, secili) })).join('')}</div>`
+    : '<div class="kart bos">Henüz sonuç yok.</div>';
+  return `${gecmisSecici()}${ozet}<h2 class="bolum-baslik">Son maçlar</h2>${satirlar}`;
+}
+
+// Takvim: noktanın sınıfı (oynanmış = sonuç, oynanacak = halka, canlı = yanıp sönen)
+function noktaSinifi(m, ids) {
+  if (m.durum === 'in') return 'canli';
+  if (m.durum === 'post' && m.ev_skor != null) return takipSonucu(m, ids) || 'notr';
+  return 'once';
+}
+
+function cizTakvim(maclar, ids) {
+  const bugun = new Date();
+  const ay = durum.takvimAy || new Date(bugun.getFullYear(), bugun.getMonth(), 1);
+  const secili = durum.takvimGun || gunAnahtari(bugun);
+  const gunler = new Map();
+  for (const m of maclar) {
+    const a = gunAnahtari(new Date(m.tarih));
+    if (!gunler.has(a)) gunler.set(a, []);
+    gunler.get(a).push(m);
+  }
+  const bosluk = (ay.getDay() + 6) % 7;   // hafta pazartesi başlar
+  const gunSayisi = new Date(ay.getFullYear(), ay.getMonth() + 1, 0).getDate();
+  const hucreler = Array.from({ length: bosluk }, () => '<span class="tg bos" aria-hidden="true"></span>');
+  for (let g = 1; g <= gunSayisi; g++) {
+    const d = new Date(ay.getFullYear(), ay.getMonth(), g);
+    const a = gunAnahtari(d);
+    const ms = gunler.get(a) || [];
+    const sinif = ['tg', ms.length && 'macli', a === gunAnahtari(bugun) && 'bugun', a === secili && 'secili'].filter(Boolean).join(' ');
+    hucreler.push(`<button class="${sinif}" data-takvimgun="${a}" aria-pressed="${a === secili}"
+      aria-label="${kacis(gunBicim.format(d))}${ms.length ? `, ${ms.length} maç` : ''}"><span class="tg-no">${g}</span>
+      <span class="tg-noktalar" aria-hidden="true">${ms.slice(0, 4).map((m) => `<i class="tn ${noktaSinifi(m, ids)}"></i>`).join('')}</span></button>`);
+  }
+  const ayAdi = ayYil.format(ay).toLocaleUpperCase('tr');
+  const takvim = `<div class="kart takvim">
+    <div class="takvim-ust">
+      <button class="takvim-ok" data-takvimay="-1" aria-label="Önceki ay">${OK(-1)}</button>
+      <h2 class="takvim-ay" aria-live="polite">${kacis(ayAdi)}</h2>
+      <button class="takvim-ok" data-takvimay="1" aria-label="Sonraki ay">${OK(1)}</button>
+    </div>
+    <div class="takvim-izgara">${HAFTA_GUNLERI.map((g) => `<span class="tg-baslik" aria-hidden="true">${g}</span>`).join('')}${hucreler.join('')}</div>
+  </div>
+  <div class="takvim-aciklama" aria-hidden="true"><span><i class="tn G"></i>Galibiyet</span><span><i class="tn B"></i>Beraberlik</span><span><i class="tn M"></i>Mağlubiyet</span><span><i class="tn once"></i>Oynanacak</span></div>`;
+
+  // Seçili günün maçları
+  const sd = anahtarTarih(secili);
+  const etiket = gunEtiketi(sd);
+  const baslik = (['Bugün', 'Yarın', 'Dün'].includes(etiket) ? `${etiket} · ` : '') + gunBicim.format(sd);
+  const gununMaclari = gunler.get(secili) || [];
+  const liste = gununMaclari.length ? `<div class="satirlar">${gununMaclari.map((m) => {
+    if (m.durum === 'in') {
+      return sonucSatiri(m, ids, { ust: kacis(ligAdi(m.lig)), sag: `<span class="canli-yazi">CANLI · ${kacis(canliDakika(m))}</span>`, sinif: 'canli' });
+    }
+    if (m.durum === 'post' && m.ev_skor != null) {
+      return sonucSatiri(m, ids, { s: takipSonucu(m, ids), ust: 'Bitti', sag: kacis(ligAdi(m.lig)) });
+    }
+    const saat = ERTELENDI.has(m.durum_kodu) ? 'ERT' : saatBicim.format(new Date(m.tarih));
+    return sonucSatiri(m, ids, { ust: kacis(ligAdi(m.lig)), sag: '', orta: `<span class="ss-saat">${saat}</span>` });
+  }).join('')}</div>` : '<div class="kart bos">Bu gün takımlarının maçı yok</div>';
+  return `${takvim}<h2 class="bolum-baslik">${kacis(baslik.toLocaleUpperCase('tr'))}</h2>${liste}`;
+}
+
+function takvimAyDegistir(yon) {
+  const bugun = new Date();
+  const simdiki = durum.takvimAy || new Date(bugun.getFullYear(), bugun.getMonth(), 1);
+  const ay = new Date(simdiki.getFullYear(), simdiki.getMonth() + yon, 1);
+  durum.takvimAy = ay;
+  // ay değişince seçili gün o ayın 1'i; bu aysa bugün
+  const buAy = ay.getFullYear() === bugun.getFullYear() && ay.getMonth() === bugun.getMonth();
+  durum.takvimGun = gunAnahtari(buAy ? bugun : ay);
+  ciz();
+}
+
+function cizMaclar() {
+  const baslik = '<div class="ekran-ust"><h1 class="logo-baslik">TARAF<span>TAR</span></h1></div>';
+  if (!durum.takip.length) return baslik + bosEkran('Maç listesi boş', 'Önce takip edeceğin takımları ekle.');
+  const zaman = sonVeriZamani();
+  const uyari = zaman && Date.now() - new Date(zaman) > ESKI_VERI
+    ? `<div class="eski-veri" role="status">Veriler güncel değil · ${kacis(eskiZaman(zaman))}</div>` : '';
+  const sekmeler = `<div class="bolmeli uc" role="tablist" aria-label="Maçlar">${Object.entries(MAC_SEKMELERI).map(([k, ad]) =>
+    `<button role="tab" data-macsekme="${k}" class="${durum.macSekme === k ? 'aktif' : ''}" aria-selected="${durum.macSekme === k}">${ad}${k === 'takvim' ? TAKVIM_SIMGE : ''}</button>`).join('')}</div>`;
+  const ids = takipIdler();
+  const maclar = tumMaclar().filter(ilgili);
+  const govde = { gecmis: cizGecmis, takvim: cizTakvim }[durum.macSekme]?.(maclar, ids) ?? cizYaklasan(maclar, ids);
+  return baslik + uyari + sekmeler + govde;
 }
 
 // ---- Puan durumu
@@ -859,7 +1012,11 @@ function cizProfil() {
         <span><b>Geri bildirim gönder</b><small>${FEEDBACK_EMAIL}</small></span>${DIS_OK}
       </a>
       <div class="menu-satir">
-        <span><b>Sürüm</b><small>Skorlar maç sırasında dakikada bir güncellenir · son veri ${kacis(sonVeri)}</small></span>
+        <span><b>Veriler</b><small>Skorlar maç sırasında dakikada bir güncellenir; yenilemek için ekranı aşağı çek</small></span>
+        <span class="deger">${kacis(sonVeri)}</span>
+      </div>
+      <div class="menu-satir">
+        <span><b>Sürüm</b></span>
         <span class="deger">${kacis(durum.surum || '—')}</span>
       </div>
     </section>
@@ -915,11 +1072,11 @@ Bulut.bildirimeDokununca((veri) => {
   durum.hedefMac = String(veri.mac);
   durum.sekme = 'takimlar';
   durum.sirala = false;
-  yukle({ sessiz: true });
+  yukle();
 });
 Bulut.bildirimGelince((b) => {
   tost([b.title, b.body?.split('\n')[0]].filter(Boolean).join(' · '), 5000);
-  yukle({ sessiz: true });
+  yukle();
 });
 
 // ------------------------------------------------------------------ olaylar
@@ -931,12 +1088,13 @@ function sekmeyeGec(sekme) {
 }
 
 // Android geri tuşu: pencere → sıralama modu → takım araması → Takım ekle'den Takımlarım'a
-// → diğer sekmelerden Maçlar'a → arka plan
+// → Maçlar'da Geçmiş/Takvim'den Yaklaşan'a → diğer sekmelerden Maçlar'a → arka plan
 function geriTusu() {
   if (durum.onay) { durum.onay = null; ciz(); return; }
   if (durum.sirala) { siralamaModu(false); return; }
   if (durum.sekme === 'ekle' && durum.arama) { durum.arama = ''; ciz(); return; }
   if (durum.sekme === 'ekle') { sekmeyeGec('takimlar'); return; }
+  if (durum.sekme === 'maclar' && durum.macSekme !== 'yaklasan') { durum.macSekme = 'yaklasan'; ciz(); window.scrollTo({ top: 0 }); return; }
   if (durum.sekme !== 'maclar') { sekmeyeGec('maclar'); return; }
   const App = window.Capacitor.Plugins.App;
   App.minimizeApp().catch(() => App.exitApp());
@@ -948,7 +1106,10 @@ document.addEventListener('click', (e) => {
   if (!h) return;
   if (h.dataset.sekme || h.dataset.git) {
     sekmeyeGec(h.dataset.sekme || h.dataset.git);
-  } else if (h.dataset.macsekme) { durum.macSekme = h.dataset.macsekme; ciz(); }
+  } else if (h.dataset.macsekme) { durum.macSekme = h.dataset.macsekme; ciz(); window.scrollTo({ top: 0 }); }
+  else if (h.dataset.gecmistakim) { durum.gecmisTakim = h.dataset.gecmistakim; ciz(); }
+  else if (h.dataset.takvimgun) { durum.takvimGun = h.dataset.takvimgun; ciz(); }
+  else if (h.dataset.takvimay) takvimAyDegistir(Number(h.dataset.takvimay));
   else if (h.dataset.puanlig) { durum.puanLig = h.dataset.puanlig; ciz(); }
   else if (h.dataset.eklelig) { durum.ekleLig = h.dataset.eklelig; ciz(); }
   else if (h.dataset.takim) takimDegistir(h.dataset.takim, h.dataset.lig);
@@ -957,7 +1118,6 @@ document.addEventListener('click', (e) => {
   else if (h.dataset.siralama) siralamaDegistir(h.dataset.siralama);
   else if (h.id === 'siralaBtn') siralamaModu(true);
   else if (h.id === 'siralaBitti') siralamaModu(false);
-  else if (h.id === 'yenileBtn') yukle();
   else if (h.id === 'googleBtn') googleIleGiris();
   else if (h.id === 'cikisBtn') cikisYap();
   else if (h.id === 'izinBtn') izinDugmesi();
@@ -975,6 +1135,9 @@ document.addEventListener('keydown', (e) => {
     takimTasi(e.target.dataset.id, e.key === 'ArrowUp' ? -1 : 1);
   }
 });
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'gecmisTakim') { durum.gecmisTakim = e.target.value; ciz(); }
+});
 document.addEventListener('input', (e) => {
   if (e.target.id !== 'arama') return;
   durum.arama = e.target.value;
@@ -991,14 +1154,60 @@ function zamanlayiciKur() {
   const simdi = Date.now();
   const sicak = tumMaclar().some((m) => ilgili(m) && (m.durum === 'in' ||
     (m.durum === 'pre' && Math.abs(new Date(m.tarih) - simdi) < 30 * 60e3)));
-  yenilemeZamanlayici = setTimeout(() => yukle({ sessiz: true }), sicak ? 60e3 : 15 * 60e3);
+  yenilemeZamanlayici = setTimeout(() => yukle(), sicak ? 60e3 : 15 * 60e3);
 }
 document.addEventListener('visibilitychange', () => {
   // izin telefonun ayarlarından açılmış olabilir
   if (document.visibilityState === 'visible' && Bulut.yerel) izinKontrol();
-  if (document.visibilityState === 'visible' && (!durum.sonYukleme || Date.now() - durum.sonYukleme > 60e3)) yukle({ sessiz: true });
+  if (document.visibilityState === 'visible' && (!durum.sonYukleme || Date.now() - durum.sonYukleme > 60e3)) yukle();
 });
-setInterval(() => { if (document.visibilityState === 'visible' && durum.sekme === 'takimlar' && !durum.sirala) ciz(); }, 60e3);
+// geri sayımlar, canlı dakika ve "Bugün" etiketleri için
+setInterval(() => {
+  if (document.visibilityState === 'visible' && ['takimlar', 'maclar'].includes(durum.sekme) && !durum.sirala && !document.activeElement?.matches('select')) ciz();
+}, 60e3);
+
+// ---- Aşağı çekip yenile: sayfanın en üstündeyken parmak aşağı kaydırılınca
+const CEK_ESIK = 72;
+let cek = null;
+const cekKutu = () => $('#cekYenile');
+function cekGoster(px) {
+  const k = cekKutu();
+  k.style.transform = `translate(-50%, ${Math.min(px, 110) - 56}px) rotate(${px * 3}deg)`;
+  k.style.opacity = Math.min(1, px / CEK_ESIK);
+  k.classList.toggle('hazir', px >= CEK_ESIK);
+}
+function cekBirak(yenile) {
+  const k = cekKutu();
+  k.classList.remove('cekiliyor', 'hazir');
+  k.style.transform = k.style.opacity = '';
+  if (!yenile) return;
+  k.classList.add('donuyor');
+  titret.birak();
+  yukle({ cekme: true }).finally(() => k.classList.remove('donuyor'));
+}
+document.addEventListener('touchstart', (e) => {
+  cek = window.scrollY <= 0 && e.touches.length === 1 && !durum.onay && !durum.sirala && !cekKutu().classList.contains('donuyor')
+    ? { x: e.touches[0].clientX, y: e.touches[0].clientY, px: 0, dikey: null } : null;
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (!cek) return;
+  const dx = e.touches[0].clientX - cek.x;
+  const dy = e.touches[0].clientY - cek.y;
+  // yatay kaydırma (lig çipleri) ya da yukarı kaydırma çekme sayılmaz
+  if (cek.dikey === null && Math.hypot(dx, dy) > 8) cek.dikey = dy > 0 && Math.abs(dy) > Math.abs(dx);
+  if (cek.dikey === false || window.scrollY > 0) { if (cek.px) cekBirak(false); cek = null; return; }
+  if (!cek.dikey) return;
+  cek.px = dy * 0.6;
+  cekKutu().classList.add('cekiliyor');
+  cekGoster(cek.px);
+}, { passive: true });
+document.addEventListener('touchend', () => {
+  if (!cek) return;
+  const yenile = cek.px >= CEK_ESIK;
+  const cekildi = cek.px > 0;
+  cek = null;
+  if (cekildi) cekBirak(yenile);
+});
 
 if (!Bulut.yerel && 'serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

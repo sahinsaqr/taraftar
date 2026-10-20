@@ -6,7 +6,8 @@ bir kural değişirse önce burası güncellenir.
 | Aşama | Kapsam |
 |---|---|
 | 1 | Renkler, yazı tipleri, tema, 4 sekmeli alt menü, Profil ekranı (yapıldı) |
-| 2–4 | Maçlar, Takımlar, Puan ekranlarının içeriği yeniden tasarlanır; takım bazında bildirim zili (3. aşama), takım sıralaması ayarının yeri (3. aşama) |
+| 2 | Üst başlık kaldırıldı (aşağı çekip yenile), Maçlar ekranı: Geçmiş / Yaklaşan / Takvim (yapıldı) |
+| 3–4 | Takımlar, Puan ekranları; takım bazında bildirim zili (3. aşama), takım sıralaması ayarının yeri (3. aşama), maç detayı (4. aşama) |
 
 ## Genel
 
@@ -96,6 +97,44 @@ Kontrast notları (ölçülen):
   diğer sekmelerden Maçlar'a, Maçlar'dan uygulamayı arka plana alır.
 - Ekran başlıklarında **Ara ve Bildirim düğmesi yok.**
 
+## Üst başlık ve yenileme
+
+- Ortak üst şerit (logo + "Taraftar" + yenile + "Veri: x önce") **yok**; çift başlık olmaz.
+- Maçlar'da başlık büyük **TARAFTAR** (Barlow Condensed 700): "TARAF" `--yazi`, "TAR" `--vurgu` (`.logo-baslik`).
+  Diğer ekranlarda yalnız ekranın kendi başlığı (`.ekran-baslik`: Takımlarım, Puan durumu, Profil).
+- Yenileme: sayfanın en üstündeyken aşağı çek (app.js "Aşağı çekip yenile"; gösterge `#cekYenile`).
+  Tarayıcının kendi çek-yenile'si `overscroll-behavior-y: none` ile kapalı. Yatay kaydırma çekme sayılmaz.
+- "Veri: x önce" Profil > Hakkında > Veriler satırında. Veri 3 saatten eskiyse Maçlar'ın üstünde
+  uyarı şeridi: "Veriler güncel değil · x saat önce" (`.eski-veri`).
+- Durum çubuğunun arkası `body::before` ile zemin rengindedir (içerik altından kayarken görünmesin).
+- Alt menüde Maçlar simgesi top: daire içinde beşgen, ince çizgi.
+
+## Maçlar ekranı
+
+Başlığın altında 3 sekmeli seçici (`.bolmeli.uc`): **Geçmiş | Yaklaşan (varsayılan) | Takvim** (takvim simgeli).
+Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yaklaşan'a döner.
+
+- **Yaklaşan:** takip edilen takımların maçları; önce canlı (önce başlayan üstte), sonra başlama saatine göre.
+  Biten maç düşer. Her maç ayrı kart (`.mac-kart`): üstte ortada "Lig · N. Hafta"; ev sahibi solda, deplasman sağda
+  (logo üstte, ad altta); ortada gün ("Bugün", "Yarın", "Cmt 25 Eki") ve büyük saat. Bugünün saati `--vurgu`.
+  Canlı kart: ortada büyük skor "2 : 1", sağ üstte turuncu "● CANLI · 67'" rozeti (nokta yanıp söner),
+  altta ilerleme çubuğu (90 dk'ya göre, devre arası %50). Karta basınca şimdilik bir şey olmaz (maç detayı 4. aşamada).
+- **Hafta:** ESPN hafta/tur vermiyor. Lig dosyasındaki sezon maçları tarihe göre sıralanıp her takımın o ligdeki
+  kaçıncı maçı olduğu sayılır (iki takımdan büyüğü). Ertelenip ileri atılan maçlarda bir kayabilir.
+  Lig için en fazla 2×(takım−1), UEFA için 8 (lig aşaması); üstündeyse hafta yazılmaz.
+- **Geçmiş:** üstte takım seçici: "Tümü" + takımlar Takımlarım sırasıyla; 5 veya daha az takımda yatay çipler
+  (logo + ad), fazlasında açılır liste. Tek takım seçiliyken G/B/M kutuları (zemin: galibiyet satırı / kart /
+  mağlubiyet satırı); "Tümü"de görünmez. "SON MAÇLAR" satırları (`.sonuc-satir`): üstte rozet + tarih, sağda lig;
+  altta logo · ev sahibi · skor · deplasman · logo (adlar skora yakın). Satır zemini sonuç rengi; bu satırlarda yalnız
+  `--yazi`. "Tümü"de takip edilen iki takımın maçı bir kez, normal renkte ve rozetsiz.
+- **Takvim:** aylık kart; ay adı ortada büyük harf, iki yanda 44px oklar; hafta pazartesiden (Pt Sa Ça Pe Cu Ct Pz).
+  Bugün `--vurgu` çerçeve, seçili gün lime dolgu + koyu yazı, maçlı gün rakamı kalın. Maç başına nokta:
+  oynanmış = sonuç rengi (G lime, B açık gri, M turuncu; açık temada lime noktanın koyu yeşil kenarı var),
+  oynanacak = içi boş halka, canlı = yanıp sönen turuncu; seçili günde noktalar koyu. Altında açıklama.
+  Güne basınca "BUGÜN · 20 EKİM SALI" başlığı ve o günün maçları: bitmiş = skor + rozet + "Bitti · Lig" (sonuç
+  renginde), canlı = skor + "CANLI · dk" (turuncu çerçeve), oynanmamış = saat + lig. Maç yoksa
+  "Bu gün takımlarının maçı yok". Ay değişince seçili gün o ayın 1'i (bu aysa bugün).
+
 ## Profil ekranı
 
 Yukarıdan aşağı kartlar:
@@ -107,7 +146,7 @@ Yukarıdan aşağı kartlar:
 3. **Görünüm** — Sistem / Açık / Koyu (seçili olan lime zemin). Takım sıralaması (Elle/Otomatik/Karışık)
    geçici olarak burada; yeri 3. aşamada belirlenecek.
 4. **Hakkında** — Gizlilik politikası (mlkcraft.com/privacy#taraftar), Geri bildirim gönder (info@mlkcraft.com),
-   Sürüm (`package.json` → `version`).
+   Veriler (son veri zamanı), Sürüm (`package.json` → `version`).
 5. En altta, kartın dışında: **Hesabımı sil** (çerçeveli, `--tehlike-yazi`) ve altında
    "Takım listen, bildirim ayarların ve hesabın kalıcı olarak silinir." Onay penceresi aynen kalır.
 
