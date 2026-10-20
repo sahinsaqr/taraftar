@@ -298,3 +298,144 @@ def lig_takimlari(lig_kodu):
                     "renk2": _renk(t.get("alternateColor")),
                 })
     return takimlar
+
+
+# ------------------------------------------------------------- maç detayı
+
+# Uygulamanın gösterdiği takım istatistikleri (ESPN adı → kısa anahtar), bu sırayla
+DETAY_ISTATISTIK = [
+    ("possessionPct", "topa_sahip"),
+    ("totalShots", "sut"),
+    ("shotsOnTarget", "isabetli_sut"),
+    ("wonCorners", "korner"),
+    ("foulsCommitted", "faul"),
+    ("offsides", "ofsayt"),
+    ("yellowCards", "sari_kart"),
+    ("redCards", "kirmizi_kart"),
+]
+
+
+def _mevki(kisaltma):
+    """ESPN mevki kısaltması (G, CD-L, LB, DM, AM-R, CF...) → KL / DF / OS / FV."""
+    k = (kisaltma or "").upper()
+    if not k or k == "SUB":
+        return ""
+    if k.startswith("G"):
+        return "KL"
+    if k.startswith(("DM", "CM", "AM", "LM", "RM", "M")):   # "DM" defans değil, orta saha
+        return "OS"
+    if k.startswith(("CD", "LB", "RB", "CB", "D", "LWB", "RWB", "SW")):
+        return "DF"
+    return "FV"
+
+
+def _olay(e, ev_id, mac_bitti_ek):
+    """keyEvents öğesi → sade olay (gösterilmeyenler None).
+
+    tur: gol | penalti | kk (kendi kalesine) | penalti_kacti | sari | kirmizi | degisiklik | ayrac
+    taraf: ev | dep (olayın yazıldığı takım; kendi kalesine golde golden yararlanan takım)."""
+    tip = ((e.get("type") or {}).get("type") or "").lower()
+    takim = str((e.get("team") or {}).get("id") or "")
+    taraf = "ev" if takim == ev_id else ("dep" if takim else "")
+    oyuncular = [(p.get("athlete") or {}).get("displayName", "") for p in e.get("participants") or []]
+    dk = (e.get("clock") or {}).get("displayValue", "")
+    olay = {"dk": dk, "taraf": taraf}
+    if tip == "halftime":
+        return {"dk": dk, "tur": "ayrac", "metin": "Devre arası"}
+    if tip == "end-regular-time":
+        return {"dk": dk, "tur": "ayrac", "metin": "Normal süre sonu" if mac_bitti_ek else "Maç sonu"}
+    if tip in ("end-extra-time", "end-of-extra-time"):
+        return {"dk": dk, "tur": "ayrac", "metin": "Uzatmalar sonu"}
+    if tip == "own-goal":
+        return {**olay, "tur": "kk", "oyuncu": oyuncular[0] if oyuncular else ""}
+    if tip == "penalty---scored":
+        return {**olay, "tur": "penalti", "oyuncu": oyuncular[0] if oyuncular else ""}
+    if tip.startswith("penalty---"):          # missed / saved / hit-woodwork
+        return {**olay, "tur": "penalti_kacti", "oyuncu": oyuncular[0] if oyuncular else ""}
+    if tip.startswith("goal") or (e.get("scoringPlay") and not tip.startswith("penalty")):
+        return {**olay, "tur": "gol", "oyuncu": oyuncular[0] if oyuncular else "",
+                "asist": oyuncular[1] if len(oyuncular) > 1 else ""}
+    if "red" in tip or "second-yellow" in tip:
+        return {**olay, "tur": "kirmizi", "oyuncu": oyuncular[0] if oyuncular else ""}
+    if "yellow" in tip:
+        return {**olay, "tur": "sari", "oyuncu": oyuncular[0] if oyuncular else ""}
+    if tip == "substitution":
+        return {**olay, "tur": "degisiklik", "giren": oyuncular[0] if oyuncular else "",
+                "cikan": oyuncular[1] if len(oyuncular) > 1 else ""}
+    return None   # başlama, gecikme, ikinci yarı başı vb.
+
+
+def _kadro(r):
+    oyuncular = r.get("roster") or []
+    def bicim(p):
+        a = p.get("athlete") or {}
+        return {"no": str(p.get("jersey") or ""), "ad": a.get("displayName", ""),
+                "poz": _mevki((p.get("position") or {}).get("abbreviation")),
+                **({"cikti": True} if p.get("subbedOut") else {}),
+                **({"girdi": True} if p.get("subbedIn") else {})}
+    ilk = sorted((p for p in oyuncular if p.get("starter")),
+                 key=lambda p: int(p.get("formationPlace") or 99))
+    return {
+        "dizilis": r.get("formation") or "",
+        "ilk11": [bicim(p) for p in ilk],
+        "yedek": [bicim(p) for p in oyuncular if not p.get("starter")],
+    }
+
+
+def detay_sadele(veri, lig_kodu):
+    """ESPN summary yanıtı → veri/detay/{id}.json biçimi (ham yanıtla test edilebilsin diye ayrı)."""
+    comp = ((veri.get("header") or {}).get("competitions") or [{}])[0]
+    durum = comp.get("status") or {}
+    tip = durum.get("type") or {}
+    rakipler = {c.get("homeAway"): c for c in comp.get("competitors") or []}
+    ev, dep = rakipler.get("home") or {}, rakipler.get("away") or {}
+    ev_id = str((ev.get("team") or {}).get("id") or "")
+    asama = tip.get("state", "pre")
+    kod = tip.get("name", "")
+    ek_sure = kod in ("STATUS_FINAL_AET", "STATUS_FINAL_PEN", "STATUS_END_OF_EXTRATIME")
+
+    olaylar = [o for o in (_olay(e, ev_id, ek_sure) for e in veri.get("keyEvents") or []) if o]
+
+    istatistik = []
+    takimlar = {str((t.get("team") or {}).get("id") or ""): t for t in (veri.get("boxscore") or {}).get("teams") or []}
+    ev_st = {s.get("name"): s.get("displayValue") for s in (takimlar.get(ev_id) or {}).get("statistics") or []}
+    dep_id = str((dep.get("team") or {}).get("id") or "")
+    dep_st = {s.get("name"): s.get("displayValue") for s in (takimlar.get(dep_id) or {}).get("statistics") or []}
+    for espn_ad, ad in DETAY_ISTATISTIK:
+        if ev_st.get(espn_ad) not in (None, "") and dep_st.get(espn_ad) not in (None, ""):
+            istatistik.append({"ad": ad, "ev": ev_st[espn_ad], "dep": dep_st[espn_ad]})
+
+    kadro = {}
+    for r in veri.get("rosters") or []:
+        taraf = "ev" if str((r.get("team") or {}).get("id") or "") == ev_id else "dep"
+        if r.get("roster"):
+            kadro[taraf] = _kadro(r)
+
+    bilgi = veri.get("gameInfo") or {}
+    hakemler = bilgi.get("officials") or []
+    oynandi = asama != "pre"
+    return {
+        "id": str(comp.get("id") or (veri.get("header") or {}).get("id") or ""),
+        "lig": lig_kodu,
+        "tarih": comp.get("date", ""),
+        "durum": asama,
+        "durum_kodu": kod,
+        "dakika": durum.get("displayClock", "") if asama == "in" else "",
+        "ev": _takim(ev),
+        "dep": _takim(dep),
+        "ev_skor": _skor(ev) if oynandi else None,
+        "dep_skor": _skor(dep) if oynandi else None,
+        # ESPN penaltı atışı olmayan maçta da 0 veriyor; yalnız penaltılarla biten maçta yazılır
+        "ev_penalti": _sayi(ev.get("shootoutScore")) if kod == "STATUS_FINAL_PEN" else None,
+        "dep_penalti": _sayi(dep.get("shootoutScore")) if kod == "STATUS_FINAL_PEN" else None,
+        "stat": ((bilgi.get("venue") or {}).get("fullName") or ""),
+        "hakem": (hakemler[0].get("displayName") or hakemler[0].get("fullName") or "") if hakemler else "",
+        "olaylar": olaylar,
+        "istatistik": istatistik,
+        "kadro": kadro,
+    }
+
+
+def mac_detayi(lig_kodu, mac_id):
+    """Maçın olayları, takım istatistikleri ve kadroları (ESPN summary)."""
+    return detay_sadele(getir(f"{SITE}/{lig_kodu}/summary?event={mac_id}"), lig_kodu)

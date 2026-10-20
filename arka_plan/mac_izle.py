@@ -6,6 +6,8 @@
    iki takımın FCM konusuna gönderir (bildirim.py). Maç yoksa kapanır; sıradaki
    maç 4 saat içindeyse kapanmadan onu bekler (zamanlanmış görev seyrek tetikleniyor).
    Sunucu kimin neyi takip ettiğini bilmez; bu yüzden tüm maçlar izlenir.
+3. Maç detaylarını (olaylar, istatistik, kadrolar) veri/detay/ altına yazar (detay.py):
+   canlı maçlar her gönderimde, biten maçlar bir kez, kadrolar açıklanınca bir kez.
 
 5,5 saat sınırı dolunca görev biter; durum canli.json'da saklandığı için
 sıradaki zamanlanmış görev kaldığı yerden devam eder, aynı olayı tekrar
@@ -26,6 +28,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 import bildirim
+import detay
 import espn
 import veri_guncelle
 from ortak import (VERI, ayarlar, git_gonder, iso, json_oku, json_yaz, simdi,
@@ -266,6 +269,9 @@ def izle():
 
         canli_yaz(son_durum, b)
         if degisti or simdi() - son_gonderim >= GONDERIM_ARALIGI:
+            # maç detayları (canlı + az önce biten + açıklanan kadrolar) aynı commit'e girer
+            detay.canli_guncelle([son_durum.get(m["id"], m) for m in aktif])
+            detay.eksikleri_yaz(list(maclar.values()), azami=10)
             git_gonder("Canlı skor güncellendi")
             son_gonderim = simdi()
         time.sleep(KONTROL)
@@ -276,6 +282,7 @@ def izle():
             veri_guncelle.guncelle("hizli")
         except veri_guncelle.GuncellemeHatasi as h:
             print(f"Maç sonrası güncelleme başarısız: {h}")
+        detay.eksikleri_yaz(list(tum_maclar().values()))
         git_gonder("Maç sonrası veriler güncellendi")
 
 
@@ -297,6 +304,9 @@ if __name__ == "__main__":
     except veri_guncelle.GuncellemeHatasi as h:
         hata = h
         print(f"HATA: {h}")
+    # maç detayları: 7 günden eskileri sil, eksik (biten / kadrosu açıklanan) maçları yaz
+    detay.eskileri_sil()
+    detay.eksikleri_yaz(list(tum_maclar().values()))
     git_gonder("Fikstür ve puan durumu güncellendi")  # değişiklik yoksa bir şey yapmaz
     izle()  # veri güncellenemese de canlı maç izleme ve bildirimler sürsün
     if hata:

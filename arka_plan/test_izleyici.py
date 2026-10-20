@@ -17,8 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import bildirim  # noqa: E402
+import detay  # noqa: E402
 import mac_izle  # noqa: E402
-from ortak import iso, json_yaz  # noqa: E402
+from ortak import iso, json_oku, json_yaz  # noqa: E402
 
 BASLAMA = datetime(2026, 10, 10, 17, 0, tzinfo=timezone.utc)
 
@@ -68,6 +69,16 @@ class IzleyiciTesti(unittest.TestCase):
         yamala(mac_izle.veri_guncelle, "guncelle", lambda mod: True)
         yamala(mac_izle.espn, "gun_maclari", lambda lig, gun: [mac_durumu(self.saat[0])])
         yamala(mac_izle, "takip_edilenler", lambda: set())
+        # maç detayı: ağ yok, geçici klasör; her istek kaydedilir
+        self.detay_istekleri = []
+
+        def sahte_detay(lig, mac_id):
+            m = mac_durumu(self.saat[0])
+            self.detay_istekleri.append((m["durum"], m["dakika"]))
+            return {**m, "olaylar": [], "istatistik": [], "kadro": {}}
+        yamala(detay, "KLASOR", self.klasor / "detay")
+        yamala(detay, "simdi", lambda: self.saat[0])
+        yamala(detay.espn, "mac_detayi", sahte_detay)
         yamala(bildirim, "gonder", lambda takimlar, tur, baslik, govde, mac_id, olay="":
                self.gonderilen.append((olay, tur, tuple(takimlar), mac_id)))
         json_yaz(self.klasor / "lig_x.json", {"maclar": [mac_durumu(self.saat[0])]})
@@ -101,6 +112,18 @@ class IzleyiciTesti(unittest.TestCase):
         self.calistir(timedelta(hours=5, minutes=30))
         ikinci = [o for o, *_ in self.gonderilen][len(ilk):]
         self.assertEqual(ikinci, ["devre", "gol", "bitti"], "tekrar ya da eksik bildirim var")
+
+    def test_detay_canliyken_guncellenir_bitince_bir_kez_yazilir(self):
+        self.calistir(timedelta(hours=5, minutes=30))
+        canli = [i for i in self.detay_istekleri if i[0] == "in"]
+        biten = [i for i in self.detay_istekleri if i[0] == "post"]
+        self.assertGreater(len(canli), 5, "canlı maç detayı gönderimlerde güncellenmeli")
+        self.assertEqual(len(biten), 1, "biten maç detayı bir kez yazılmalı")
+        self.assertEqual(json_oku(self.klasor / "detay" / "m1.json")["durum"], "post")
+        # sonraki görev aynı biten maç için tekrar istek atmaz
+        once = len(self.detay_istekleri)
+        detay.eksikleri_yaz([mac_durumu(self.saat[0])])
+        self.assertEqual(len(self.detay_istekleri), once)
 
     def test_fcm_kosulu_iki_takimi_kapsar(self):
         self.assertEqual(self.eski[(bildirim, "gonder")].__module__, "bildirim")

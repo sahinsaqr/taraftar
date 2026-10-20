@@ -55,6 +55,8 @@
   --kabarik: 0 1px 2px rgba(5,12,25,.35), 0 2px 6px rgba(5,12,25,.25);
   --kucuk-golge: 0 1px 2px rgba(5,12,25,.4);
   --menu-golge: 0 -4px 14px rgba(5,12,25,.3);
+  --ist-ev: #c8f04a;            /* istatistik oran çubuğu: ev sahibi */
+  --ist-dep: #6280ac;           /* deplasman */
   --ikon-golge: drop-shadow(0 2px 4px rgba(5,12,25,.4)) drop-shadow(0 6px 14px rgba(5,12,25,.35));
   /* koyu logolar (Juventus, Tottenham) koyu zeminde kaybolmasın: ince açık kenar + hafif gölge */
   --logo-kenar: drop-shadow(0 0 1px rgba(255,255,255,.7)) drop-shadow(0 1px 1.5px rgba(5,12,25,.35));
@@ -93,6 +95,8 @@
   --kabarik: 0 1px 2px rgba(27,45,75,.18), 0 2px 6px rgba(27,45,75,.12);
   --kucuk-golge: 0 1px 2px rgba(27,45,75,.22);
   --menu-golge: 0 -2px 10px rgba(27,45,75,.08);
+  --ist-ev: #3f6b00;            /* lime beyazda görünmez; vurgu yazı rengi (6:1) */
+  --ist-dep: #6280ac;           /* beyazda 4.2:1 */
   --ikon-golge: drop-shadow(0 2px 4px rgba(27,45,75,.12)) drop-shadow(0 6px 14px rgba(27,45,75,.14));
   /* beyaz logolar beyaz kartta kaybolmasın */
   --logo-kenar: drop-shadow(0 0 1px rgba(27,45,75,.35)) drop-shadow(0 1px 1.5px rgba(27,45,75,.18));
@@ -357,6 +361,77 @@ img.logo { filter: var(--logo-kenar); }
   padding: 10px 16px; text-align: center; font: 700 15px/1.2 var(--yazi-tipi-dar); letter-spacing: .04em;
   background: var(--vurgu-zemin); color: var(--vurgu-zemin-yazi); box-shadow: var(--kabarik);
 }
+
+/* ------------------------------------------------------ maç detayı */
+body.detayda .alt-menu { display: none; }
+body.detayda { padding-bottom: calc(24px + var(--alt-bosluk)); }
+.detay-ust { justify-content: space-between; }
+.detay-lig { flex: 1; margin: 0; text-align: center; font: 700 17px/1.2 var(--yazi-tipi-dar); letter-spacing: .03em; color: var(--yazi-2); }
+.geri-esi { width: 44px; flex: none; }
+.skor-alani { padding: 16px 12px 14px; margin-bottom: 14px; }
+.sa-ust { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 8px; }
+.sa-takim { display: grid; justify-items: center; gap: 8px; text-align: center; min-width: 0; }
+.sa-takim b { font-size: 15px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.logo.dev { width: 68px; height: 68px; }
+.logo-yedek.dev { font-size: 20px; }
+.sa-orta { display: grid; justify-items: center; gap: 6px; padding-top: 4px; min-width: 112px; }
+.sa-skor { font: 700 64px/1 var(--yazi-tipi-dar); font-variant-numeric: tabular-nums; display: flex; gap: 10px; }
+.sa-skor span { color: var(--yazi-2); }
+.sa-saat { font: 700 48px/1 var(--yazi-tipi-dar); font-variant-numeric: tabular-nums; }
+.sa-durum-yazi { font-size: 14px; font-weight: 600; color: var(--yazi-2); text-align: center; }
+.sa-bilgi { margin: 12px 0 0; text-align: center; font-size: 13px; color: var(--yazi-2); }
+
+/* Özet: dikey zaman çizelgesi (en yeni üstte); ev solda sağa hizalı, deplasman sağda */
+.olaylar { list-style: none; margin: 0; padding: 8px 10px; position: relative; }
+.olaylar::before { content: ""; position: absolute; left: 50%; top: 12px; bottom: 12px; width: 2px; translate: -1px 0; background: var(--cizgi); }
+.olay { display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); align-items: center; gap: 10px; padding: 6px 0; position: relative; }
+.olay-dk {
+  width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; z-index: 1;
+  background: var(--yuzey-2); border: 1.5px solid var(--cizgi); font: 700 14px/1 var(--yazi-tipi-dar); letter-spacing: -.02em;
+}
+.olay-dk.gol { background: var(--vurgu-zemin); color: var(--vurgu-zemin-yazi); border-color: var(--vurgu-zemin); box-shadow: var(--kucuk-golge); }
+.olay-ic { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.olay-taraf.ev .olay-ic { flex-direction: row-reverse; text-align: right; }
+.olay-ic b { display: block; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.olay-ic small { display: block; font-size: 12px; color: var(--yazi-2); }
+.olay-ic .giren { color: var(--vurgu); }
+.olay-simge { flex: none; color: var(--yazi-2); }
+.tur-gol .olay-simge, .tur-penalti .olay-simge, .tur-kk .olay-simge { color: var(--yazi); }
+.olay-ayrac { display: flex; justify-content: center; padding: 6px 0; position: relative; z-index: 1; }
+.olay-ayrac span {
+  padding: 4px 12px; border-radius: 999px; background: var(--yuzey-2); border: 1px solid var(--cizgi);
+  font: 700 13px/1.2 var(--yazi-tipi-dar); letter-spacing: .05em; text-transform: uppercase; color: var(--yazi-2);
+}
+
+/* İstatistik */
+.istatistikler { padding: 6px 14px; }
+.ist-satir { padding: 10px 0; }
+.ist-satir + .ist-satir { border-top: 1px solid var(--cizgi); }
+.ist-ust { display: grid; grid-template-columns: 56px 1fr 56px; align-items: baseline; }
+.ist-ust b { font: 700 18px/1 var(--yazi-tipi-dar); font-variant-numeric: tabular-nums; }
+.ist-ust b:last-child { text-align: right; }
+.ist-ust span { text-align: center; font-size: 13px; font-weight: 600; color: var(--yazi-2); }
+.ist-cubuk { display: flex; gap: 4px; height: 6px; margin-top: 8px; }
+.ist-cubuk span { border-radius: 3px; min-width: 3px; }
+.ist-cubuk .ev { background: var(--ist-ev); }
+.ist-cubuk .dep { background: var(--ist-dep); }
+
+/* Kadrolar */
+.dizilisler { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.dizilis {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px;
+  background: var(--yuzey) var(--kart-zemin); border: 1px solid var(--cizgi); box-shadow: var(--kart-golge); min-width: 0;
+}
+.dizilis span { font: 700 15px/1 var(--yazi-tipi-dar); color: var(--yazi-2); }
+.dizilis b { margin-left: auto; font: 700 20px/1 var(--yazi-tipi-dar); }
+.oyuncular { list-style: none; margin: 0; padding: 4px 14px; }
+.oyuncu { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.oyuncu + .oyuncu { border-top: 1px solid var(--cizgi); }
+.forma { width: 28px; flex: none; text-align: center; font: 700 17px/1 var(--yazi-tipi-dar); color: var(--yazi-2); font-variant-numeric: tabular-nums; }
+.oy-ad { flex: 1; min-width: 0; font-size: 15px; }
+.oy-not { color: var(--canli-yazi); font-weight: 700; }
+.oy-not.giren { color: var(--vurgu); }
+.oy-poz { font: 700 13px/1 var(--yazi-tipi-dar); letter-spacing: .05em; color: var(--yazi-2); }
 
 /* ------------------------------------------------------- puan tablosu */
 .tablo-sar { overflow-x: auto; }

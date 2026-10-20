@@ -8,7 +8,8 @@ bir kural değişirse önce burası güncellenir.
 | 1 | Renkler, yazı tipleri, tema, 4 sekmeli alt menü, Profil ekranı (yapıldı) |
 | 2 | Üst başlık kaldırıldı (aşağı çekip yenile), Maçlar ekranı: Geçmiş / Yaklaşan / Takvim (yapıldı) |
 | 3 | Takımlarım (sade kart + zil, dokununca Puan), basılı tutup sürükleyerek sıralama, Takım ekle (yapıldı) |
-| 4 | Puan ekranı, maç detayı |
+| 4 | Maç detayı: Özet / İstatistik / Kadrolar (yapıldı) |
+| sonra | Puan ekranının yeniden tasarımı |
 
 ## Genel
 
@@ -104,7 +105,7 @@ Kurallar:
   Takım ekle'deki takım düğmeleri. Galibiyet/mağlubiyet satırları da aynı gölgeyi ve kendi renginde gradyanı alır.
 - Canlı maç kartı/satırı: turuncu kenar + `--canli-parlama`.
 - Basılabilir kart: `.basilabilir` (dokununca `scale(.98)`, gölge `--kart-golge-basili`, 120 ms).
-  Şimdilik Takım ekle'deki takım düğmeleri; maç kartı detay açılınca (4. aşama) alır. Basınca bir şey olmayan karta verilmez.
+  Takım ekle'deki takım düğmeleri, maç kartları, Geçmiş/Takvim satırları. Basınca bir şey olmayan karta verilmez.
 - `prefers-reduced-motion: reduce` açıksa basılma, nokta yanıp sönmesi ve yenileme dönüşü animasyonsuz.
 - Kaydırma akıcılığı: büyük blur yok (en fazla 18–20px gölge), `backdrop-filter` yok, kartlara `will-change` verilmez.
 - Kontrol: gradyan üzerindeki yazı iki uçta da 4.5:1 (ekran görüntüsü betiği gradyan duraklarını da ölçer).
@@ -160,7 +161,7 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
   Biten maç düşer. Her maç ayrı kart (`.mac-kart`): üstte ortada lig adı; ev sahibi solda, deplasman sağda
   (logo üstte, ad altta); ortada gün ("Bugün", "Yarın", "Cmt 25 Eki") ve büyük saat. Bugünün saati `--vurgu`.
   Canlı kart: ortada büyük skor "2 : 1", sağ üstte turuncu "● CANLI · 67'" rozeti (nokta yanıp söner),
-  altta ilerleme çubuğu (90 dk'ya göre, devre arası %50). Karta basınca şimdilik bir şey olmaz (maç detayı 4. aşamada).
+  altta ilerleme çubuğu (90 dk'ya göre, devre arası %50). Karta basınca maç detayı açılır.
 - **Lig satırı:** maç kartında yalnız lig adı. Tahmini hafta numarası kaldırıldı; gerçek tur bilgisi veri kaynağı
   (API-Football) değişince eklenecek.
 - **Geçmiş:** üstte takım seçici: "Tümü" + takımlar Takımlarım sırasıyla; 5 veya daha az takımda yatay çipler
@@ -217,6 +218,41 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
 - Liste satırı: logo, ad, altında lig (takımın ilk göründüğü lig: önce ulusal lig); sağda "Takip et" (çerçeveli) /
   "Takipte ✓" (lime dolgu). Basınca anında eklenir/çıkarılır, kısa titreşim. "Tamam" düğmesi yok.
 - Alt menü görünür, "Takımlar" seçili. Geri tuşu ve alt menüdeki "Takımlar" Takımlarım'a döner.
+
+## Maç detayı
+
+**Veri (sunucu, `arka_plan/`):** `veri/detay/{maç id}.json`. ESPN summary uç noktası (`espn.py` → `mac_detayi`,
+`detay_sadele`); ne zaman çekileceği `detay.py`'de (ESPN'i bilmez). Dosya: skor/durum, `olaylar`, `istatistik`,
+`kadro`, `stat`, `hakem` (ESPN çoğu ligde hakem vermiyor; yoksa gösterilmez).
+- Olay türleri: `gol` (asistli), `penalti`, `kk` (kendi kalesine; golden yararlanan takıma yazılır), `penalti_kacti`,
+  `sari`, `kirmizi`, `degisiklik` (giren/çıkan), `ayrac` (Devre arası / Maç sonu / Normal süre sonu / Uzatmalar sonu).
+- İstatistikler: topa sahip olma, şut, isabetli şut, korner, faul, ofsayt, sarı kart, kırmızı kart.
+- Kadro: diziliş, ilk 11 (forma no, ad, mevki KL/DF/OS/FV, oyundan çıktı ↓), yedekler (oyuna girdi ↑).
+- Kapsam: canlı maç → izleyicinin her gönderiminde; son 7 günde biten → bir kez (dosya "post" ise bir daha istek yok);
+  yaklaşan → başlamaya 75 dk kala, kadro açıklanınca bir kez; 7 günden eski dosyalar silinir.
+  Dosyalar `veri/` altında olduğu için mevcut commit'lere girer (ek commit yok).
+- Testler: `arka_plan/test_detay.py` (gerçek ESPN yanıtlarından küçültülmüş örnekler `arka_plan/test_veri/`).
+
+**Ekran (`cizMacDetay`):**
+- Açılış: Yaklaşan maç kartları, Geçmiş ve Takvim satırları (`[data-mac]`, `.basilabilir`), bildirime dokununca.
+  Takımlarım kartı maç değil Puan'ı açar (maç kutuları 3. aşamada kaldırıldı). Alt menü gizli (`body.detayda`).
+  Geri oku ve geri tuşu önceki ekrana ve aynı kaydırma konumuna döner.
+- Üst: geri oku (44px), ortada lig adı. Zil yok (bildirimler takım bazında).
+- Skor alanı (kart): logolar 68px ve adlar; ortada skor (Barlow Condensed 64px). Canlı: yanıp sönen "● 67'" rozeti
+  (devre arasında "DEVRE ARASI"); bitti: "Bitti" (+ "· Uzatmalar sonrası" / "· Penaltılar 4-3"); başlamadı: gün ve saat.
+  Varsa "Stadyum · Hakem: …" satırı.
+- Skor/dakika en taze kaynaktan (canlı skor, dakikada bir), olaylar/istatistik/kadro detay dosyasından.
+  Ekran açıkken her veri yenilemesinde detay dosyası da yeniden okunur.
+- Sekmeler: Özet | İstatistik | Kadrolar; verisi olmayan gizlenir, tek sekme kalırsa sekme çubuğu da gizlenir;
+  hiçbiri yoksa yalnız skor alanı ve "Bu maç için ayrıntı henüz yok".
+- **Özet:** dikey zaman çizelgesi, en yeni üstte. Ortada 44px dakika dairesi (gol/penaltı/kendi kalesine: lime zemin +
+  koyu yazı). Ev sahibi olayları solda (sağa hizalı), deplasman sağda; olayın yanında simge (top, sarı/kırmızı kart,
+  iki ok). Gol: oyuncu kalın, altında "Gol · asist X" / "Penaltı" / "Kendi kalesine". Değişiklik: "↑ giren" (vurgu)
+  ve "↓ çıkan". Devre arası / maç sonu ayraç hapı.
+- **İstatistik:** kart içinde; her satırda ev değeri · ad · deplasman değeri, altında oran çubuğu
+  (`--ist-ev`: koyuda lime, açıkta #3F6B00; `--ist-dep`: #6280AC).
+- **Kadrolar:** üstte iki takımın dizilişi (kutular), takım seçici (ev / deplasman), "İLK 11" ve "YEDEKLER" listeleri
+  (forma no, ad, mevki). Saha çizimi yok.
 
 ## Profil ekranı
 

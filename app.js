@@ -49,7 +49,8 @@ const durum = {
   bulut: 'baglaniyor',  // baglaniyor | hazir | hata
   islem: false,         // giriş/çıkış/silme sürüyor
   onay: null,           // sayfa içi pencere: 'sil' | 'gizlilik'
-  hedefMac: null,       // bildirime dokunulunca gidilecek maç
+  hedefMac: null,       // bildirime dokunulunca açılacak maç
+  detay: null,          // açık maç detayı: { id, lig, veri, yuklendi, sekme, kadroTaraf, onceki }
   puanVurgu: null,      // Takımlarım'dan gelince Puan'da vurgulanacak takım
   izin: null,           // bildirim izni: granted | denied | prompt… (web'de null)
   surum: '',            // package.json → version
@@ -168,7 +169,7 @@ function logoYedek(takim, boyut, px) {
 }
 
 function logoHtml(takim, boyut = 'kucuk') {
-  const px = { kucuk: 24, orta: 32, buyuk: 44, '': 40 }[boyut] ?? 40;
+  const px = { kucuk: 24, orta: 32, buyuk: 44, dev: 68, '': 40 }[boyut] ?? 40;
   let url = takim.logo || '';
   const m = url.match(/^https:\/\/a\.espncdn\.com(\/i\/.+\.png)/);
   if (m) url = `https://a.espncdn.com/combiner/i?img=${m[1]}&w=${px * 2}&h=${px * 2}`;
@@ -211,6 +212,7 @@ async function yukle({ cekme = false } = {}) {
   ]);
   durum.sonYukleme = new Date();
   ciz();
+  if (durum.sekme === 'mac') detayYukle();   // canlı maçta olaylar/istatistik de tazelensin
   zamanlayiciKur();
   if (cekme) tost(durum.hata ? 'Veriler alınamadı' : 'Güncellendi');
 }
@@ -272,8 +274,9 @@ function ciz() {
     if (secili) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
   const icerik = $('#icerik');
-  const ciziciler = { takimlar: cizTakimlar, maclar: cizMaclar, puan: cizPuan, ekle: cizEkle, profil: cizProfil };
-  icerik.innerHTML = (durum.hata && durum.sekme !== 'profil' ? `<div class="uyari">${kacis(durum.hata)}</div>` : '') +
+  const ciziciler = { takimlar: cizTakimlar, maclar: cizMaclar, puan: cizPuan, ekle: cizEkle, profil: cizProfil, mac: cizMacDetay };
+  document.body.classList.toggle('detayda', durum.sekme === 'mac');   // maç detayında alt menü yok
+  icerik.innerHTML = (durum.hata && !['profil', 'mac'].includes(durum.sekme) ? `<div class="uyari">${kacis(durum.hata)}</div>` : '') +
     (ciziciler[durum.sekme] || cizMaclar)() + onayKutusu();
   hedefeGit();
   puanaGit();
@@ -530,7 +533,8 @@ function macKarti(m, ids) {
     orta = `<div class="mk-gun">${kacis(kisaGun(d))}</div><div class="mk-saat${bugunMu(d) ? ' bugun' : ''}">${saat}</div>`;
   }
   const yuzde = canli ? canliYuzde(m) : 0;
-  return `<article class="kart mac-kart${canli ? ' canli' : ''}">
+  return `<article class="kart mac-kart basilabilir${canli ? ' canli' : ''}" data-mac="${kacis(m.id)}" tabindex="0"
+      aria-label="${kacis(`${m.ev.ad} - ${m.dep.ad}, ${ligAdi(m.lig)}. Ayrıntıları aç`)}">
     ${canli ? `<div class="mk-rozet">${canliRozet(m)}</div>` : ''}
     <div class="mk-lig">${kacis(ligSatiri(m))}</div>
     <div class="mk-govde">${taraf(m.ev)}<div class="mk-orta">${orta}</div>${taraf(m.dep)}</div>
@@ -553,7 +557,8 @@ function cizYaklasan(maclar, ids) {
 function sonucSatiri(m, ids, { s = null, ust = kacis(kisaGun(new Date(m.tarih))), sag = kacis(ligAdi(m.lig)), orta, sinif = '' } = {}) {
   const ad = (t, yon) => `<span class="ss-ad ${yon}${ids.has(t.id) ? ' takipte' : ''}">${kacis(t.ad)}</span>`;
   orta ??= `${m.ev_skor ?? 0} - ${m.dep_skor ?? 0}`;
-  return `<div class="sonuc-satir${s ? ` s-${s}` : ''}${sinif ? ` ${sinif}` : ''}">
+  return `<div class="sonuc-satir basilabilir${s ? ` s-${s}` : ''}${sinif ? ` ${sinif}` : ''}" data-mac="${kacis(m.id)}" tabindex="0"
+      aria-label="${kacis(`${m.ev.ad} - ${m.dep.ad}. Ayrıntıları aç`)}">
     <div class="ss-ust"><span class="ss-sol">${s ? `<span class="rozet ${s}" title="${SONUC_ADLARI[s]}">${s}</span>` : ''}${ust}</span><span class="ss-sag">${sag}</span></div>
     <div class="ss-alt">${logoHtml(m.ev)}${ad(m.ev, 'ev')}<span class="ss-orta">${orta}</span>${ad(m.dep, 'dep')}${logoHtml(m.dep)}</div>
   </div>`;
@@ -669,6 +674,161 @@ function cizMaclar() {
   const maclar = tumMaclar().filter(ilgili);
   const govde = { gecmis: cizGecmis, takvim: cizTakvim }[durum.macSekme]?.(maclar, ids) ?? cizYaklasan(maclar, ids);
   return baslik + uyari + sekmeler + govde;
+}
+
+// ---- Maç detayı: Özet | İstatistik | Kadrolar (veri/detay/{id}.json, sunucuda detay.py yazar)
+const DETAY_SEKMELERI = { ozet: 'Özet', istatistik: 'İstatistik', kadro: 'Kadrolar' };
+const ISTATISTIK_ADLARI = {
+  topa_sahip: 'Topa sahip olma', sut: 'Şut', isabetli_sut: 'İsabetli şut', korner: 'Korner',
+  faul: 'Faul', ofsayt: 'Ofsayt', sari_kart: 'Sarı kart', kirmizi_kart: 'Kırmızı kart',
+};
+const MEVKI_ADLARI = { KL: 'Kaleci', DF: 'Defans', OS: 'Orta saha', FV: 'Forvet' };
+const KART_SIMGE = (renk) => `<svg class="olay-simge" width="14" height="18" viewBox="0 0 14 18" aria-hidden="true"><rect x="2" y="1" width="10" height="16" rx="2" fill="${renk}"/></svg>`;
+const DEGISIKLIK_SIMGE = '<svg class="olay-simge" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20V5m0 0-3.5 3.5M7 5l3.5 3.5M17 4v15m0 0 3.5-3.5M17 19l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const TOP_SIMGE = '<svg class="olay-simge" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m12 8.2 3.6 2.6-1.4 4.2H9.8l-1.4-4.2z" fill="currentColor"/></svg>';
+
+// Maç kartı/satırı → detay. Önceki ekran ve kaydırma konumu geri dönüş için saklanır.
+function macAc(id) {
+  if (surukleniyor) return;
+  const m = tumMaclar().find((x) => x.id === id);
+  if (!m) return;
+  durum.detay = { id, lig: m.lig, veri: durum.detay?.id === id ? durum.detay.veri : null, yuklendi: false,
+    sekme: 'ozet', kadroTaraf: 'ev', onceki: { sekme: durum.sekme, kaydir: window.scrollY } };
+  durum.sekme = 'mac';
+  ciz();
+  window.scrollTo({ top: 0 });
+  detayYukle();
+}
+
+function macKapat() {
+  const onceki = durum.detay?.onceki || { sekme: 'maclar', kaydir: 0 };
+  durum.detay = null;
+  durum.sekme = onceki.sekme;
+  ciz();
+  window.scrollTo({ top: onceki.kaydir });
+}
+
+async function detayYukle() {
+  const d = durum.detay;
+  if (!d) return;
+  try {
+    const veri = await jsonGetir(`veri/detay/${encodeURIComponent(d.id)}.json`);
+    if (durum.detay === d) d.veri = veri;
+  } catch { /* dosya yok: maç için ayrıntı henüz yazılmadı */ }
+  if (durum.detay === d) { d.yuklendi = true; if (durum.sekme === 'mac' && !surukleniyor) ciz(); }
+}
+
+// Skor ve dakika en taze kaynaktan (canlı skor dakikada bir), olaylar detay dosyasından
+function detayMaci() {
+  const d = durum.detay;
+  const ozet = tumMaclar().find((x) => x.id === d.id) || {};
+  return { ...(d.veri || {}), ...ozet, stat: ozet.stat || d.veri?.stat || '', hakem: d.veri?.hakem || '' };
+}
+
+function skorAlani(m) {
+  const takim = (t) => `<div class="sa-takim">${logoHtml(t, 'dev')}<b>${kacis(t.ad)}</b></div>`;
+  const d = new Date(m.tarih);
+  let orta, durumSatiri;
+  if (m.durum === 'pre') {
+    orta = `<div class="sa-saat">${ERTELENDI.has(m.durum_kodu) ? 'ERT' : saatBicim.format(d)}</div>`;
+    durumSatiri = `<span class="sa-durum-yazi">${ERTELENDI.has(m.durum_kodu) ? 'Ertelendi' : kacis(kisaGun(d))}</span>`;
+  } else {
+    orta = `<div class="sa-skor" aria-label="Skor ${m.ev_skor ?? 0} - ${m.dep_skor ?? 0}">${m.ev_skor ?? 0}<span aria-hidden="true">-</span>${m.dep_skor ?? 0}</div>`;
+    if (m.durum === 'in') {
+      durumSatiri = `<span class="canli-rozet"><span class="nokta" aria-hidden="true"></span>${m.durum_kodu === 'STATUS_HALFTIME' ? 'DEVRE ARASI' : kacis(m.dakika || 'CANLI')}</span>`;
+    } else {
+      const ek = m.durum_kodu === 'STATUS_FINAL_PEN' && m.ev_penalti != null ? ` · Penaltılar ${m.ev_penalti}-${m.dep_penalti}`
+        : m.durum_kodu === 'STATUS_FINAL_PEN' ? ' · Penaltılar sonrası'
+        : m.durum_kodu === 'STATUS_FINAL_AET' ? ' · Uzatmalar sonrası' : '';
+      durumSatiri = `<span class="sa-durum-yazi">Bitti${ek}</span>`;
+    }
+  }
+  const bilgi = [m.stat, m.hakem && `Hakem: ${m.hakem}`].filter(Boolean).map(kacis).join(' · ');
+  return `<section class="kart skor-alani" aria-label="Skor">
+    <div class="sa-ust">${takim(m.ev)}<div class="sa-orta">${orta}<div class="sa-durum">${durumSatiri}</div></div>${takim(m.dep)}</div>
+    ${bilgi ? `<p class="sa-bilgi">${bilgi}</p>` : ''}
+  </section>`;
+}
+
+// Olay metni (ev sahibi solda sağa hizalı, deplasman sağda)
+function olayIcerik(o) {
+  switch (o.tur) {
+    case 'gol': return `${TOP_SIMGE}<span><b>${kacis(o.oyuncu)}</b><small>Gol${o.asist ? ` · asist ${kacis(o.asist)}` : ''}</small></span>`;
+    case 'penalti': return `${TOP_SIMGE}<span><b>${kacis(o.oyuncu)}</b><small>Penaltı</small></span>`;
+    case 'kk': return `${TOP_SIMGE}<span><b>${kacis(o.oyuncu)}</b><small>Kendi kalesine</small></span>`;
+    case 'penalti_kacti': return `<span><b>${kacis(o.oyuncu)}</b><small>Kaçan penaltı</small></span>`;
+    case 'sari': return `${KART_SIMGE('#f5c400')}<span><b>${kacis(o.oyuncu)}</b><small>Sarı kart</small></span>`;
+    case 'kirmizi': return `${KART_SIMGE('#e5322d')}<span><b>${kacis(o.oyuncu)}</b><small>Kırmızı kart</small></span>`;
+    case 'degisiklik': return `${DEGISIKLIK_SIMGE}<span><b class="giren"><span aria-label="Giren">↑</span> ${kacis(o.giren)}</b><small><span aria-label="Çıkan">↓</span> ${kacis(o.cikan)}</small></span>`;
+    default: return '';
+  }
+}
+
+function cizOzet(v) {
+  const satirlar = [...v.olaylar].reverse().map((o) => {
+    if (o.tur === 'ayrac') return `<li class="olay-ayrac"><span>${kacis(o.metin)}</span></li>`;
+    const gol = ['gol', 'penalti', 'kk'].includes(o.tur);
+    const ic = `<div class="olay-ic">${olayIcerik(o)}</div>`;
+    return `<li class="olay tur-${o.tur}">
+      <div class="olay-taraf ev">${o.taraf === 'ev' ? ic : ''}</div>
+      <div class="olay-dk${gol ? ' gol' : ''}">${kacis(o.dk)}</div>
+      <div class="olay-taraf dep">${o.taraf === 'dep' ? ic : ''}</div>
+    </li>`;
+  }).join('');
+  return `<ol class="kart olaylar" aria-label="Maç olayları, en yenisi üstte">${satirlar}</ol>`;
+}
+
+function cizIstatistik(v) {
+  const sayi = (x) => parseFloat(String(x).replace(',', '.')) || 0;
+  return `<div class="kart istatistikler">${v.istatistik.map((s) => {
+    const a = sayi(s.ev), b = sayi(s.dep);
+    const oran = a + b ? Math.round((a / (a + b)) * 100) : 50;
+    const yuzde = s.ad === 'topa_sahip' ? '%' : '';
+    return `<div class="ist-satir">
+      <div class="ist-ust"><b>${yuzde}${kacis(s.ev)}</b><span>${kacis(ISTATISTIK_ADLARI[s.ad] || s.ad)}</span><b>${yuzde}${kacis(s.dep)}</b></div>
+      <div class="ist-cubuk" aria-hidden="true"><span class="ev" style="flex:${oran}"></span><span class="dep" style="flex:${100 - oran}"></span></div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function cizKadro(v, m) {
+  const taraflar = ['ev', 'dep'].filter((t) => v.kadro[t]);
+  const secili = taraflar.includes(durum.detay.kadroTaraf) ? durum.detay.kadroTaraf : taraflar[0];
+  const k = v.kadro[secili];
+  const oyuncu = (o) => `<li class="oyuncu"><span class="forma">${kacis(o.no)}</span><span class="oy-ad">${kacis(o.ad)}${o.cikti ? ' <span class="oy-not" aria-label="oyundan çıktı">↓</span>' : ''}${o.girdi ? ' <span class="oy-not giren" aria-label="oyuna girdi">↑</span>' : ''}</span><span class="oy-poz" title="${kacis(MEVKI_ADLARI[o.poz] || '')}">${kacis(o.poz)}</span></li>`;
+  return `<div class="dizilisler">${['ev', 'dep'].map((t) => `<div class="dizilis">${logoHtml(m[t])}<span>${kacis(m[t].kisa || m[t].ad)}</span><b>${kacis(v.kadro[t]?.dizilis || '—')}</b></div>`).join('')}</div>
+    ${taraflar.length > 1 ? `<div class="bolmeli uc" role="tablist" aria-label="Takım" style="grid-template-columns:1fr 1fr">${taraflar.map((t) =>
+      `<button role="tab" data-kadrotaraf="${t}" class="${t === secili ? 'aktif' : ''}" aria-selected="${t === secili}">${kacis(m[t].ad)}</button>`).join('')}</div>` : ''}
+    <h2 class="bolum-baslik">İlk 11</h2>
+    <ul class="kart oyuncular">${k.ilk11.map(oyuncu).join('')}</ul>
+    ${k.yedek.length ? `<h2 class="bolum-baslik">Yedekler</h2><ul class="kart oyuncular">${k.yedek.map(oyuncu).join('')}</ul>` : ''}`;
+}
+
+function cizMacDetay() {
+  const d = durum.detay;
+  if (!d) return cizMaclar();
+  const m = detayMaci();
+  const ust = `<div class="ekran-ust detay-ust"><button class="geri-dugme" id="macGeri" aria-label="Geri">
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <h1 class="detay-lig">${kacis(ligAdi(m.lig || d.lig))}</h1><span class="geri-esi" aria-hidden="true"></span></div>`;
+  if (!m.ev) return ust + '<div class="kart bos">Maç bulunamadı.</div>';
+  const v = d.veri;
+  const var_ = {
+    ozet: !!v?.olaylar?.length,
+    istatistik: !!v?.istatistik?.length,
+    kadro: !!(v?.kadro?.ev || v?.kadro?.dep),
+  };
+  const sekmeler = Object.keys(DETAY_SEKMELERI).filter((k) => var_[k]);
+  if (!sekmeler.includes(d.sekme)) d.sekme = sekmeler[0];
+  let govde;
+  if (!sekmeler.length) {
+    govde = `<div class="kart bos">${d.yuklendi ? 'Bu maç için ayrıntı henüz yok' : 'Yükleniyor…'}</div>`;
+  } else {
+    govde = `${sekmeler.length > 1 ? `<div class="bolmeli uc" role="tablist" aria-label="Maç ayrıntıları" style="grid-template-columns:repeat(${sekmeler.length},1fr)">${sekmeler.map((k) =>
+      `<button role="tab" data-detaysekme="${k}" class="${d.sekme === k ? 'aktif' : ''}" aria-selected="${d.sekme === k}">${DETAY_SEKMELERI[k]}</button>`).join('')}</div>` : ''}
+      ${{ ozet: cizOzet, istatistik: cizIstatistik, kadro: cizKadro }[d.sekme](v, m)}`;
+  }
+  return ust + skorAlani(m) + govde;
 }
 
 // ---- Puan durumu
@@ -1058,20 +1218,19 @@ function onayKutusu() {
   </div>`;
 }
 
-// ---- Bildirime dokununca ilgili takım kartına git
+// ---- Bildirime dokununca o maçın detayını aç (geri tuşu Maçlar'a döner)
 function hedefeGit() {
-  if (!durum.hedefMac || durum.sekme !== 'takimlar') return;
-  const m = tumMaclar().find((x) => x.id === durum.hedefMac);
-  if (!m) return;  // veri gelince ciz() yeniden dener
+  if (!durum.hedefMac || durum.sekme === 'mac') return;
+  const id = durum.hedefMac;
+  if (!tumMaclar().some((x) => x.id === id)) return;  // veri gelince ciz() yeniden dener
   durum.hedefMac = null;
-  const t = durum.takip.find((x) => x.id === m.ev.id || x.id === m.dep.id);
-  const kart = t && document.getElementById(`takim-${t.id}`);
-  if (kart) requestAnimationFrame(() => kart.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  setTimeout(() => macAc(id), 0);   // ciz() içindeyiz; açılış bir sonraki adımda
 }
 Bulut.bildirimeDokununca((veri) => {
   if (!veri.mac) return;
   durum.hedefMac = String(veri.mac);
-  durum.sekme = 'takimlar';
+  durum.detay = null;
+  durum.sekme = 'maclar';
   yukle();
 });
 Bulut.bildirimGelince((b) => {
@@ -1087,10 +1246,11 @@ function sekmeyeGec(sekme) {
 }
 
 // Android geri tuşu: pencere → sürükleme (iptal) → takım araması → Takım ekle'den Takımlarım'a
-// → Maçlar'da Geçmiş/Takvim'den Yaklaşan'a → diğer sekmelerden Maçlar'a → arka plan
+// → maç detayından önceki ekrana → Maçlar'da Geçmiş/Takvim'den Yaklaşan'a → diğer sekmelerden Maçlar'a → arka plan
 function geriTusu() {
   if (durum.onay) { durum.onay = null; ciz(); return; }
   if (surukleniyor) { siralamayiIptalEt(); return; }
+  if (durum.sekme === 'mac') { macKapat(); return; }
   if (durum.sekme === 'ekle' && durum.arama) { durum.arama = ''; ciz(); return; }
   if (durum.sekme === 'ekle') { sekmeyeGec('takimlar'); return; }
   if (durum.sekme === 'maclar' && durum.macSekme !== 'yaklasan') { durum.macSekme = 'yaklasan'; ciz(); window.scrollTo({ top: 0 }); return; }
@@ -1103,8 +1263,10 @@ if (Bulut.yerel) window.Capacitor.Plugins.App?.addListener('backButton', geriTus
 document.addEventListener('click', (e) => {
   const h = e.target.closest('button, a');
   if (!h) {
+    const mac = e.target.closest('[data-mac]');
     const kart = e.target.closest('.takim-kart');
-    if (kart) takimPuaninaGit(kart.dataset.id);
+    if (mac) macAc(mac.dataset.mac);
+    else if (kart) takimPuaninaGit(kart.dataset.id);
     return;
   }
   if (h.dataset.sekme || h.dataset.git) {
@@ -1119,6 +1281,9 @@ document.addEventListener('click', (e) => {
   else if (h.dataset.bildirim) bildirimDegistir(h.dataset.bildirim);
   else if (h.dataset.tema) temaDegistir(h.dataset.tema);
   else if (h.dataset.zil) zilDegistir(h.dataset.zil);
+  else if (h.id === 'macGeri') macKapat();
+  else if (h.dataset.detaysekme) { durum.detay.sekme = h.dataset.detaysekme; ciz(); }
+  else if (h.dataset.kadrotaraf) { durum.detay.kadroTaraf = h.dataset.kadrotaraf; ciz(); }
   else if (h.id === 'ipucuKapat') { depoYaz(IPUCU_DEPO, true); ciz(); }
   else if (h.id === 'googleBtn') googleIleGiris();
   else if (h.id === 'cikisBtn') cikisYap();
@@ -1132,6 +1297,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && durum.onay) { durum.onay = null; ciz(); }
   else if (e.key === 'Escape' && surukleniyor) siralamayiIptalEt();
+  else if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset?.mac) { e.preventDefault(); macAc(e.target.dataset.mac); }
   else if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('takim-kart')) { e.preventDefault(); takimPuaninaGit(e.target.dataset.id); }
   else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.target.classList?.contains('takim-kart')) {
     e.preventDefault();
@@ -1166,7 +1332,7 @@ document.addEventListener('visibilitychange', () => {
 });
 // geri sayımlar, canlı dakika ve "Bugün" etiketleri için
 setInterval(() => {
-  if (document.visibilityState === 'visible' && ['takimlar', 'maclar'].includes(durum.sekme) && !surukleniyor && !document.activeElement?.matches('select')) ciz();
+  if (document.visibilityState === 'visible' && ['takimlar', 'maclar', 'mac'].includes(durum.sekme) && !surukleniyor && !document.activeElement?.matches('select')) ciz();
 }, 60e3);
 
 // ---- Aşağı çekip yenile: sayfanın en üstündeyken parmak aşağı kaydırılınca
