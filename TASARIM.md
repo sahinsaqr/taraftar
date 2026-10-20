@@ -78,8 +78,11 @@ Kontrast notları (ölçülen):
   - Android açılış ekranı uygulama açılmadan gösterildiği için **cihazın** açık/koyu ayarını izler
     (`values/tema.xml`, `values-night/tema.xml`, `drawable(-night)/splash.png`).
   - Açılış görseli kaynakları: `assets/splash.svg` (açık), `assets/splash-dark.svg` (koyu).
-    PNG'ye `sharp` ile çevrilip `npx capacitor-assets generate --android` ile üretilir
-    (bu komut AndroidManifest.xml'i yeniden biçimlendiriyor; o değişikliği geri al).
+    Android ikon ve açılış ekranları `npx @capacitor/assets generate --android` ile üretilir
+    (ikon zemini `assets/icon-background.png`). Bu komut AndroidManifest.xml'i yeniden biçimlendiriyor;
+    `git checkout` ile toptan geri alma, manifest'te bekleyen kendi değişikliklerini de siler — önce `git diff`'e bak.
+  - Uygulama ikonu `ikonlar/` (web) ve `assets/` (Android kaynakları); bildirim çubuğu ikonu
+    `drawable-*dpi/ic_stat_taraftar.png` (beyaz, saydam zemin), rengi `values/bildirim.xml` → #C8F04A.
   - Uygulama açıldıktan sonra durum/gezinme çubuğu bölgesi pencere zeminini gösterir (Capacitor 8 SystemBars
     pencereye dolgu verir). `temaUygula()` bu zemini `MainActivity`'deki küçük `Zemin` eklentisiyle
     (`ZeminPlugin.java`) uygulamanın seçili temasına çevirir; böylece cihaz koyu, uygulama açık olsa da uyar.

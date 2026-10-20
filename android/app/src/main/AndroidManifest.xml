@@ -10,7 +10,7 @@
         <!-- FCM: bildirim ikonu, rengi ve varsayılan kanal (kanal bulut.js'de oluşturulur) -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_bildirim" />
+            android:resource="@drawable/ic_stat_taraftar" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/bildirim_rengi" />
