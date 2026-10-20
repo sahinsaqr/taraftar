@@ -3,7 +3,8 @@
 1. Verileri gerekiyorsa günceller (fikstür, sonuçlar, puan durumu).
 2. ayarlar.json'daki liglerin yakında başlayacak ya da oynanmakta olan maçı
    varsa maçlar bitene kadar dakikada bir skoru kontrol eder ve her olayı
-   iki takımın FCM konusuna gönderir (bildirim.py). Maç yoksa hemen kapanır.
+   iki takımın FCM konusuna gönderir (bildirim.py). Maç yoksa kapanır; sıradaki
+   maç 4 saat içindeyse kapanmadan onu bekler (zamanlanmış görev seyrek tetikleniyor).
    Sunucu kimin neyi takip ettiğini bilmez; bu yüzden tüm maçlar izlenir.
 
 5,5 saat sınırı dolunca görev biter; durum canli.json'da saklandığı için
@@ -31,6 +32,9 @@ from ortak import (VERI, ayarlar, git_gonder, iso, json_oku, json_yaz, simdi,
                    takip_edilenler, zaman_oku)
 
 ILERI_BAK = timedelta(minutes=80)       # bu süre içinde başlayacak maçları bekle
+# GitHub zamanlanmış görevi 30 dk'da bir değil, çoğu zaman 3-5 saatte bir başlatıyor.
+# Sıradaki maç bu süre içindeyse görev kapanmaz, bekler; beklerken veriyi de yeniler.
+BOSTA_BEKLE = timedelta(hours=4)
 HATIRLATMA = timedelta(minutes=15)      # maçtan bu kadar önce hatırlat
 AZAMI_SURE = timedelta(hours=5, minutes=30)   # GitHub sınırı 6 saat
 KONTROL = int(os.environ.get("KONTROL_ARALIGI", "60"))
@@ -171,6 +175,23 @@ def izlenecek_mi(m, su_an):
     return bas - ILERI_BAK <= su_an <= bas + timedelta(hours=4)
 
 
+def sonraki_baslangic(maclar, su_an):
+    """Henüz başlamamış en yakın maçın başlama zamanı (yoksa None)."""
+    zamanlar = [zaman_oku(m.get("tarih")) for m in maclar.values()
+                if m.get("durum") == "pre" and m.get("durum_kodu") not in ERTELENDI]
+    zamanlar = [z for z in zamanlar if z and z > su_an]
+    return min(zamanlar) if zamanlar else None
+
+
+def ara_guncelle():
+    """Beklerken verinin süresi dolduysa günceller (veri_guncelle'nin 'otomatik' kuralları)."""
+    try:
+        if veri_guncelle.guncelle("otomatik"):
+            git_gonder("Fikstür ve puan durumu güncellendi")
+    except veri_guncelle.GuncellemeHatasi as h:
+        print(f"Ara güncelleme başarısız: {h}")
+
+
 def guncel_durum_getir(m):
     """Maçın son durumunu ESPN'den getirir."""
     bas = zaman_oku(m["tarih"])
@@ -199,7 +220,15 @@ def izle():
                 maclar[mid] = m
         adaylar = [m for m in maclar.values() if izlenecek_mi(m, su_an)]
         if not adaylar:
-            break
+            sonraki = sonraki_baslangic(maclar, su_an)
+            kalan = AZAMI_SURE - (su_an - baslangic)
+            if not sonraki or sonraki - ILERI_BAK - su_an > min(BOSTA_BEKLE, kalan):
+                break
+            bekle = max(30, min((sonraki - ILERI_BAK - su_an).total_seconds(), 1800))
+            print(f"Sıradaki maç {sonraki:%H:%M} UTC; izlemeye {int(bekle)} sn sonra bakılacak.")
+            time.sleep(bekle)
+            ara_guncelle()
+            continue
 
         izlenen_var = True
         aktif = [m for m in adaylar

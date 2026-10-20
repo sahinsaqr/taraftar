@@ -68,7 +68,11 @@ def takim_listesi(lig, maclar, tablolar, eski_takimlar, tam):
     # Maçlardan ve tablodan gelen takımları da ekle (eksik kalmasın)
     for m in maclar.values():
         for t in (m["ev"], m["dep"]):
-            takimlar.setdefault(t["id"], dict(t))
+            kayit = takimlar.setdefault(t["id"], dict(t))
+            # takım listesi yalnız tam güncellemede yenilenir; kulüp renkleri eksikse maçtan tamamla
+            for alan in ("renk", "renk2"):
+                if t.get(alan) and not kayit.get(alan):
+                    kayit[alan] = t[alan]
     for tablo in tablolar:
         for s in tablo["satirlar"]:
             takimlar.setdefault(s["takim"]["id"], dict(s["takim"]))

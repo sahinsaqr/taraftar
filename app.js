@@ -260,9 +260,15 @@ function sonuc(m, id) {
 }
 
 // ------------------------------------------------------------------ çizim
+// En yeni veri zamanı: canlı skor (yalnız maç izlenirken yazılır) ya da fikstür/puan dosyaları
+function sonVeriZamani() {
+  const zamanlar = [durum.canli?.guncelleme, ...Object.values(durum.ligVeri).map((l) => l?.guncelleme)].filter(Boolean);
+  return zamanlar.length ? zamanlar.reduce((a, b) => (new Date(a) > new Date(b) ? a : b)) : null;
+}
+
 function durumSatiri() {
   const s = $('#durumSatiri');
-  const verisi = durum.canli?.guncelleme || Object.values(durum.ligVeri)[0]?.guncelleme;
+  const verisi = sonVeriZamani();
   const canliSay = tumMaclar().filter((m) => m.durum === 'in' && ilgili(m)).length;
   const parcalar = [];
   if (canliSay) parcalar.push(`<span class="nokta"></span>${canliSay} canlı maç`);
@@ -829,7 +835,7 @@ function bildirimKarti() {
 function cizProfil() {
   const k = Bulut.kullanici;
   const bekle = durum.islem ? 'disabled' : '';
-  const sonVeri = goreceliZaman(durum.canli?.guncelleme || Object.values(durum.ligVeri)[0]?.guncelleme);
+  const sonVeri = goreceliZaman(sonVeriZamani());
   const sil = k && durum.bulut === 'hazir' ? `<div class="sil-alani">
       <button class="dugme sil-dugme genis" id="silBtn" ${bekle}>Hesabımı sil</button>
       <p>Takım listen, bildirim ayarların ve hesabın kalıcı olarak silinir.</p>
