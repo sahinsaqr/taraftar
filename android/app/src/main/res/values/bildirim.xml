@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="bildirim_rengi">#C8F04A</color>
+    <!-- skor kartında son golü atan tarafın skoru; açık bildirim zemininde lime okunmaz -->
+    <color name="kart_vurgu">#3F6B00</color>
 </resources>

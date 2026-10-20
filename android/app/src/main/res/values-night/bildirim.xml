@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- skor kartı: koyu bildirim zemininde lime -->
+    <color name="kart_vurgu">#C8F04A</color>
+</resources>

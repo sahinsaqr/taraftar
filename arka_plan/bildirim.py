@@ -21,6 +21,9 @@ KANAL = {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hati
 RENK = "#C8F04A"          # bildirim vurgusu (lime)
 IKON = "ic_stat_taraftar"  # res/drawable-*dpi
 GOL_SESI = "gol_sesi"      # res/raw/gol_sesi.ogg (Android 8 öncesi; sonrasında kanalın sesi çalar)
+# "Skor kartı" görünümü: bu türler ayrıca t{ID}_{tür}k konularına yalnız veri (data-only) mesajı olarak gider;
+# bildirimi uygulamanın yerel kodu çizer (BildirimServisi.java). Hatırlatma yalnız metin.
+KART_TURLERI = ("gol", "mac", "son")
 
 _uygulama = None
 _denendi = False
@@ -48,11 +51,14 @@ def kosul(takim_idleri, tur):
     return " || ".join(f"'{k}' in topics" for k in konular)
 
 
-def gonder(takim_idleri, tur, baslik, govde, mac_id, olay=""):
-    """Olayı takımların `tur` konusuna gönderir. Başarılıysa True."""
+def gonder(takim_idleri, tur, baslik, govde, mac_id, olay="", kart=None):
+    """Olayı takımların `tur` konusuna (sade metin) ve kart verisi varsa `tur`k konusuna (skor kartı,
+    yalnız veri) gönderir. Sade metin gönderimi başarılıysa True."""
     assert tur in TURLER, tur
     k = kosul(takim_idleri, tur)
     print(f"[FCM {tur}] {baslik} | {govde.replace(chr(10), ' / ')}  →  {k}")
+    if kart is not None and tur in KART_TURLERI:
+        kart_gonder(takim_idleri, tur, baslik, govde, mac_id, olay, kart)
     if not k or not _baslat():
         return False
     from firebase_admin import messaging
@@ -76,4 +82,33 @@ def gonder(takim_idleri, tur, baslik, govde, mac_id, olay=""):
         return True
     except Exception as h:  # ağ, kota vb.; izlemeyi durdurmasın
         print(f"  FCM gönderilemedi: {h}")
+        return False
+
+
+def kart_verisi(tur, baslik, govde, mac_id, olay, kart):
+    """Skor kartı veri mesajının alanları (hepsi metin; FCM veri değerleri string olmalı)."""
+    veri = {"kart": "1", "mac": str(mac_id), "tur": tur, "olay": olay, "kanal": KANAL[tur],
+            "baslik": baslik, "govde": govde}
+    for anahtar, deger in kart.items():
+        veri[anahtar] = "" if deger is None else str(deger)
+    return veri
+
+
+def kart_gonder(takim_idleri, tur, baslik, govde, mac_id, olay, kart):
+    """t{ID}_{tür}k konularına yüksek öncelikli, yalnız veri mesajı (bildirimi uygulama çizer)."""
+    k = kosul(takim_idleri, f"{tur}k")
+    print(f"[FCM {tur}k] kart: {kart.get('ev_kisa')} {kart.get('ev_skor')}-{kart.get('dep_skor')} {kart.get('dep_kisa')}  →  {k}")
+    if not k or not _baslat():
+        return False
+    from firebase_admin import messaging
+    mesaj = messaging.Message(
+        condition=k,
+        data=kart_verisi(tur, baslik, govde, mac_id, olay, kart),
+        android=messaging.AndroidConfig(priority="high", ttl=3600),
+    )
+    try:
+        messaging.send(mesaj)
+        return True
+    except Exception as h:
+        print(f"  FCM (kart) gönderilemedi: {h}")
         return False

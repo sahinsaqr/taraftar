@@ -6,7 +6,8 @@
 
    Firestore: kullanicilar/{uid} = { takimlar: [...], bildirim: {gol, mac, son, hat}, guncelleme }
    takimlar[i] = { id, ad, kisa, logo, lig, renk?, renk2?, zil? }  (zil: false = o takımın bildirimleri kapalı)
-   Bildirim konuları (yalnız Android): t{takımID}_{tür}, tür = gol | mac | son | hat
+   Bildirim konuları (yalnız Android): t{takımID}_{tür}, tür = gol | mac | son | hat;
+   skor kartı görünümünde gol/mac/son yerine t{takımID}_{tür}k (golk | mack | sonk)
    Her tür kendi kanalına gelir: goller, mac_durumu, mac_sonucu, hatirlatma_sesli (KANALLAR) */
 
 import { FIREBASE_AYAR } from './firebase-ayar.js';
@@ -15,7 +16,9 @@ const SDK = 'https://www.gstatic.com/firebasejs/12.19.0/';
 const ZAMAN_ASIMI = 12000;
 const KONU_DEPO = 'ft_konular';   // cihazın abone olduğu konular (fark hesabı için)
 export const BILDIRIM_TURLERI = ['gol', 'mac', 'son', 'hat'];
-export const VARSAYILAN_BILDIRIM = { gol: true, mac: true, son: true, hat: true };
+// gorunum: 'metin' (sade metin, FCM bildirim mesajı) | 'kart' (skor kartı: …k konuları, veri mesajı, yerel kod çizer)
+export const VARSAYILAN_BILDIRIM = { gol: true, mac: true, son: true, hat: true, gorunum: 'metin' };
+const KART_TURLERI = new Set(['gol', 'mac', 'son']);   // hatırlatma her iki görünümde metin
 /** Android bildirim kanalları (arka_plan/bildirim.py → KANAL ile aynı kimlikler; TASARIM.md > Bildirimler).
     importance: 4 = yüksek (ekranın üstünde açılır), 3 = normal (varsayılan ses). */
 const KANALLAR = [
@@ -150,10 +153,12 @@ class YerelBulut {
   async abonelikleriEsitle(takimlar, ayar) {
     if (!this.mesaj) return;
     const istenen = new Set();
-    // zili kapalı takımın (zil: false) hiçbir konusuna abone olunmaz; açılınca türlere göre yeniden abone olur
+    // zili kapalı takımın (zil: false) hiçbir konusuna abone olunmaz; açılınca türlere göre yeniden abone olur.
+    // Skor kartı görünümünde gol/mac/son için t{ID}_{tür}k konuları (görünüm değişince eskilerden çıkılır).
+    const ek = (tur) => (ayar.gorunum === 'kart' && KART_TURLERI.has(tur) ? 'k' : '');
     for (const t of takimlar) {
       if (t.zil === false) continue;
-      for (const tur of BILDIRIM_TURLERI) if (ayar[tur]) istenen.add(`t${t.id}_${tur}`);
+      for (const tur of BILDIRIM_TURLERI) if (ayar[tur]) istenen.add(`t${t.id}_${tur}${ek(tur)}`);
     }
     let mevcut;
     try { mevcut = new Set(JSON.parse(localStorage.getItem(KONU_DEPO) || '[]')); } catch { mevcut = new Set(); }

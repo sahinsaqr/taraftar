@@ -17,11 +17,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bildirim  # noqa: E402
 
 ORNEK = {
-    "gol": ("⚽ GOL! Deneme FK 2–1 Örnek SK", "67' Deneme Oyuncu · Deneme FK"),
-    "mac": ("Maç başladı: Deneme FK – Örnek SK", "Süper Lig"),
-    "son": ("Maç sonu: Deneme FK 2–1 Örnek SK", "Süper Lig"),
-    "hat": ("15 dk sonra: Deneme FK – Örnek SK · 20:00", "Süper Lig"),
+    "gol": ("⚽ GOL! Galatasaray 2–1 Fenerbahçe", "67' Mauro Icardi (p) · Galatasaray"),
+    "mac": ("Maç başladı: Galatasaray – Fenerbahçe", "Süper Lig"),
+    "son": ("Maç sonu: Galatasaray 2–1 Fenerbahçe", "Süper Lig"),
+    "hat": ("15 dk sonra: Galatasaray – Fenerbahçe · 20:00", "Süper Lig"),
 }
+LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/{}.png&w=120&h=120"
+# skor kartı örnekleri (gerçek logolar; olay türüne göre skor/oyuncu)
+KART_TABAN = {"lig": "Süper Lig", "ev_ad": "Galatasaray", "dep_ad": "Fenerbahçe", "ev_kisa": "GAL", "dep_kisa": "FEN",
+              "ev_logo": LOGO.format(432), "dep_logo": LOGO.format(436), "ev_renk": "aa0031", "dep_renk": "ffff00"}
+KART = {
+    "gol": {**KART_TABAN, "ev_skor": 2, "dep_skor": 1, "dk": "67'", "oyuncu": "Mauro Icardi", "atan": "ev", "pen": "1", "kk": ""},
+    "mac": {**KART_TABAN, "ev_skor": 0, "dep_skor": 0},
+    "son": {**KART_TABAN, "ev_skor": 2, "dep_skor": 1},
+}
+OLAY = {"gol": "gol", "mac": "basladi", "son": "bitti", "hat": "hatirlat"}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -35,7 +45,8 @@ if __name__ == "__main__":
     for t in turler:
         baslik, govde = ORNEK[t]
         # her denemenin etiketi ayrı: aynı etiket öncekinin yerine geçerdi
-        if bildirim.gonder((takim_id,), t, baslik, govde, f"deneme_{t}", "deneme"):
+        # sade metin t{ID}_{tür} konusuna, skor kartı (veri) t{ID}_{tür}k konusuna gider
+        if bildirim.gonder((takim_id,), t, baslik, govde, f"deneme_{t}", OLAY[t], kart=KART.get(t)):
             print(f"Gönderildi: t{takim_id}_{t} → kanal {bildirim.KANAL[t]}")
         else:
             hata = True

@@ -21,6 +21,7 @@ const GIZLILIK_OZETI = [
   ['İletişim', `Gizlilikle ilgili soruların için: ${FEEDBACK_EMAIL}`],
 ];
 const TEMA_ADLARI = { sistem: 'Sistem', acik: 'Açık', koyu: 'Koyu' };
+const GORUNUM_ADLARI = { metin: 'Sade metin', kart: 'Skor kartı' };
 const TEMA_RENGI = { acik: '#eef2f8', koyu: '#1b2d4b' };  // --zemin; index.html ile aynı
 const BILDIRIM_ADLARI = {
   gol: ['Goller', 'Takımın gol atınca ya da gol yiyince'],
@@ -1038,6 +1039,19 @@ const hesabiSil = () => hesapIslemi(async () => {
   tost('Hesabın ve verilerin silindi');
 });
 
+// Bildirim görünümü: sade metin | skor kartı (abonelikler buna göre değişir)
+function gorunumDegistir(gorunum) {
+  if (durum.bildirim.gorunum === gorunum) return;
+  durum.bildirim = { ...durum.bildirim, gorunum };
+  depoYaz(BILDIRIM_DEPO, durum.bildirim);
+  if (durum.bulut === 'hazir') {
+    Bulut.bildirimAyarlariYaz(durum.bildirim).catch((h) => console.warn(h));
+    Bulut.abonelikleriEsitle(durum.takip, durum.bildirim).catch(() => {});
+  }
+  tost(gorunum === 'kart' ? 'Bildirimler skor kartı olarak gelecek' : 'Bildirimler sade metin olarak gelecek');
+  ciz();
+}
+
 function bildirimDegistir(tur) {
   durum.bildirim = { ...durum.bildirim, [tur]: !durum.bildirim[tur] };
   depoYaz(BILDIRIM_DEPO, durum.bildirim);
@@ -1152,6 +1166,11 @@ function bildirimKarti() {
         <span><b>${kacis(BILDIRIM_ADLARI[tur][0])}</b><small>${kacis(BILDIRIM_ADLARI[tur][1])}</small></span>
         <span class="anahtar" aria-hidden="true"></span>
       </button>`).join('')}
+    ${secimSatiri('Bildirim görünümü', '', 'gorunum', GORUNUM_ADLARI, durum.bildirim.gorunum || 'metin')}
+    ${durum.bildirim.gorunum === 'kart' ? `<div class="izin-kutu kart-uyari">
+      <p>Skor kartı bazı telefonlarda uygulama kapalıyken gecikebilir. Xiaomi'de Ayarlar &gt; Uygulamalar &gt; Taraftar &gt; Otomatik başlatma'yı aç.</p>
+      <button class="dugme ikincil genis" id="otomatikBaslatBtn">Otomatik başlatma ayarını aç</button>
+    </div>` : ''}
     <p class="kart-not">Bir takımın bildirimlerini tamamen kapatmak için Takımlarım'da o takımın zil simgesine dokun.</p>
     <button class="menu-satir" id="bildirimAyarBtn">
       <span><b>Bildirim sesi ve titreşim</b><small>Android ayarlarında her bildirim türünün sesi, titreşimi ve önemi</small></span>${SAG_OK}
@@ -1246,7 +1265,8 @@ Bulut.bildirimeDokununca((veri) => {
   yukle();
 });
 Bulut.bildirimGelince((b) => {
-  tost([b.title, b.body?.split('\n')[0]].filter(Boolean).join(' · '), 5000);
+  // skor kartını (veri mesajı) yerel kod bildirim olarak zaten gösteriyor; uygulama içi mesaj yalnız sade metinde
+  if (b.data?.kart !== '1') tost([b.title, b.body?.split('\n')[0]].filter(Boolean).join(' · '), 5000);
   yukle();
 });
 
@@ -1292,6 +1312,8 @@ document.addEventListener('click', (e) => {
   else if (h.dataset.takim) takimDegistir(h.dataset.takim, h.dataset.lig);
   else if (h.dataset.bildirim) bildirimDegistir(h.dataset.bildirim);
   else if (h.dataset.tema) temaDegistir(h.dataset.tema);
+  else if (h.dataset.gorunum) gorunumDegistir(h.dataset.gorunum);
+  else if (h.id === 'otomatikBaslatBtn') window.Capacitor?.Plugins?.Ayarlar?.otomatikBaslatma().catch(() => tost('Ayar açılamadı'));
   else if (h.dataset.zil) zilDegistir(h.dataset.zil);
   else if (h.id === 'macGeri') macKapat();
   else if (h.dataset.detaysekme) { durum.detay.sekme = h.dataset.detaysekme; ciz(); }

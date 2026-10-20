@@ -51,9 +51,32 @@ ERTELENDI = {"STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_ABANDONED",
 
 # ------------------------------------------------------------ bildirim
 
-def bildir(m, tur, olay, baslik, mesaj, etiketler=("soccer",), oncelik=4):
-    """Olayı maçın iki takımının `tur` konusuna (FCM) ve varsa ntfy'ye gönderir."""
-    bildirim.gonder((m["ev"]["id"], m["dep"]["id"]), tur, baslik, mesaj, m["id"], olay)
+def logo_adresi(url, px=120):
+    """ESPN logosu → küçültülmüş PNG (skor kartı için)."""
+    if url.startswith("https://a.espncdn.com/i/"):
+        return f"https://a.espncdn.com/combiner/i?img={url[len('https://a.espncdn.com'):]}&w={px}&h={px}"
+    return url
+
+
+def kart_bilgisi(m, ayrinti=None):
+    """Skor kartı bildiriminin verisi: takımlar, skor ve (golde) dakika/oyuncu/atan taraf."""
+    a = ayrinti or {}
+    kart = {"lig": lig_adi(m), "ev_skor": m.get("ev_skor") or 0, "dep_skor": m.get("dep_skor") or 0,
+            "dk": a.get("dk", ""), "oyuncu": a.get("oyuncu", ""), "atan": a.get("atan", ""),
+            "pen": "1" if a.get("pen") else "", "kk": "1" if a.get("kk") else ""}
+    for taraf in ("ev", "dep"):
+        t = m[taraf]
+        kart[f"{taraf}_ad"] = t.get("ad", "")
+        kart[f"{taraf}_kisa"] = (t.get("kisa") or t.get("ad", "")[:3]).upper()
+        kart[f"{taraf}_logo"] = logo_adresi(t.get("logo") or "")
+        kart[f"{taraf}_renk"] = t.get("renk", "")
+    return kart
+
+
+def bildir(m, tur, olay, baslik, mesaj, etiketler=("soccer",), oncelik=4, ayrinti=None):
+    """Olayı maçın iki takımının `tur` konusuna (sade metin ve skor kartı) ve varsa ntfy'ye gönderir."""
+    bildirim.gonder((m["ev"]["id"], m["dep"]["id"]), tur, baslik, mesaj, m["id"], olay,
+                    kart=kart_bilgisi(m, ayrinti) if tur in bildirim.KART_TURLERI else None)
     ntfy_gonder(m, baslik, mesaj, etiketler, oncelik)
 
 
@@ -93,11 +116,18 @@ def turkiye_saati(dt):
     return (dt + timedelta(hours=3)).strftime("%H:%M")
 
 
-def gol_ayrintisi(m, atan, atan_skor):
-    """"67' Oyuncu · Takım" ("(k.k.)" / "(p)" ekli). Gol listesi skorla uyuşmazsa dakika + takım."""
+def son_gol(m, atan, atan_skor):
+    """Golü atan takımın son golü (gol listesi skorla uyuşuyorsa), yoksa None."""
     goller = [g for g in m.get("goller", []) if g["takim"] == atan["id"]]
     if goller and len(goller) == atan_skor and goller[-1].get("oyuncu"):
-        g = goller[-1]
+        return goller[-1]
+    return None
+
+
+def gol_ayrintisi(m, atan, atan_skor):
+    """"67' Oyuncu · Takım" ("(k.k.)" / "(p)" ekli). Gol listesi skorla uyuşmazsa dakika + takım."""
+    g = son_gol(m, atan, atan_skor)
+    if g:
         ek = " (k.k.)" if g.get("kk") else " (p)" if g.get("pen") else ""
         return f"{g['dk']} {g['oyuncu']}{ek} · {atan['ad']}"
     return " · ".join(x for x in (m.get("dakika") or "", atan["ad"]) if x)
@@ -148,13 +178,17 @@ def degisiklikleri_bildir(b, eski, yeni):
         if ev >= eski_ev and dep >= eski_dep:
             atan = yeni["ev"] if ev > eski_ev else yeni["dep"]
             atan_skor = ev if atan is yeni["ev"] else dep
+            g = son_gol(yeni, atan, atan_skor) or {}
+            ayrinti = {"atan": "ev" if atan is yeni["ev"] else "dep", "dk": g.get("dk") or yeni.get("dakika") or "",
+                       "oyuncu": g.get("oyuncu", ""), "pen": g.get("pen"), "kk": g.get("kk")}
             b.bir_kez(f"{mid}:skor:{ev}-{dep}", yeni, "gol", "gol", f"⚽ GOL! {skor_metni(yeni)}",
-                      gol_ayrintisi(yeni, atan, atan_skor), ("soccer", "tada"), 5)
+                      gol_ayrintisi(yeni, atan, atan_skor), ("soccer", "tada"), 5, ayrinti=ayrinti)
         else:
             iptal = yeni["ev"] if ev < eski_ev else yeni["dep"]
             dakika = f" · {yeni['dakika']}" if yeni.get("dakika") else ""
             b.bir_kez(f"{mid}:iptal:{ev}-{dep}", yeni, "gol", "iptal", f"❌ Gol iptal: {iptal['ad']}{dakika}",
-                      skor_metni(yeni), ("x",))
+                      skor_metni(yeni), ("x",),
+                      ayrinti={"atan": "ev" if iptal is yeni["ev"] else "dep", "dk": yeni.get("dakika") or ""})
             # İptal edilen skor tekrar olursa yeniden bildirilebilsin
             b.gonderilenler.discard(f"{mid}:skor:{eski_ev}-{eski_dep}")
             b.gonderilenler.discard(f"{mid}:iptal:{ev}-{dep}")

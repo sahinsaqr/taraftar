@@ -80,8 +80,10 @@ class IzleyiciTesti(unittest.TestCase):
         yamala(detay, "simdi", lambda: self.saat[0])
         yamala(detay.espn, "mac_detayi", sahte_detay)
         self.metinler = []
-        yamala(bildirim, "gonder", lambda takimlar, tur, baslik, govde, mac_id, olay="":
-               (self.gonderilen.append((olay, tur, tuple(takimlar), mac_id)), self.metinler.append((olay, baslik, govde))))
+        self.kartlar = []
+        yamala(bildirim, "gonder", lambda takimlar, tur, baslik, govde, mac_id, olay="", kart=None:
+               (self.gonderilen.append((olay, tur, tuple(takimlar), mac_id)), self.metinler.append((olay, baslik, govde)),
+                self.kartlar.append((olay, kart))))
         json_yaz(self.klasor / "lig_x.json", {"maclar": [mac_durumu(self.saat[0])]})
 
     def tearDown(self):
@@ -146,6 +148,18 @@ class IzleyiciTesti(unittest.TestCase):
               "goller": eski["goller"] + [{"takim": "2", "dk": "75'", "oyuncu": "Savunmacı", "pen": False, "kk": True}]}
         mac_izle.degisiklikleri_bildir(b, eski, kk)
         self.assertIn(("gol", "⚽ GOL! Ev 2–1 Dep", "75' Savunmacı (k.k.) · Dep"), self.metinler)
+
+    def test_skor_karti_verisi(self):
+        self.calistir(timedelta(hours=5, minutes=30))
+        kartlar = dict(reversed([(o, k) for o, k in self.kartlar]))   # her olayın ilk kartı
+        self.assertIsNone(kartlar["hatirlat"], "hatırlatma yalnız metin")
+        gol = [k for o, k in self.kartlar if o == "gol"][1]          # 60' penaltı golü
+        self.assertEqual((gol["ev_kisa"], gol["dep_kisa"], gol["ev_skor"], gol["dep_skor"]), ("EV", "DEP", 2, 0))
+        self.assertEqual((gol["atan"], gol["dk"], gol["oyuncu"], gol["pen"], gol["kk"]), ("ev", "60'", "Golcü", "1", ""))
+        self.assertEqual((kartlar["basladi"]["atan"], kartlar["bitti"]["ev_skor"]), ("", 2))
+        veri = bildirim.kart_verisi("gol", "b", "g", "m1", "gol", gol)
+        self.assertTrue(all(isinstance(v, str) for v in veri.values()), "FCM veri değerleri metin olmalı")
+        self.assertEqual((veri["kart"], veri["kanal"]), ("1", "goller"))
 
     def test_her_tur_kendi_kanalina(self):
         self.assertEqual(bildirim.KANAL, {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hatirlatma_sesli"})
