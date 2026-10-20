@@ -685,7 +685,8 @@ const ISTATISTIK_ADLARI = {
 const MEVKI_ADLARI = { KL: 'Kaleci', DF: 'Defans', OS: 'Orta saha', FV: 'Forvet' };
 const KART_SIMGE = (renk) => `<svg class="olay-simge" width="14" height="18" viewBox="0 0 14 18" aria-hidden="true"><rect x="2" y="1" width="10" height="16" rx="2" fill="${renk}"/></svg>`;
 const DEGISIKLIK_SIMGE = '<svg class="olay-simge" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20V5m0 0-3.5 3.5M7 5l3.5 3.5M17 4v15m0 0 3.5-3.5M17 19l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const TOP_SIMGE = '<svg class="olay-simge" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="m12 8.2 3.6 2.6-1.4 4.2H9.8l-1.4-4.2z" fill="currentColor"/></svg>';
+// Futbol topu (ince çizgi): dış daire, ortada dolu beşgen, köşelerinden dikişler ve kenarlarda beşgen parçaları
+const TOP_SIMGE = '<svg class="olay-simge top" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 8.6 15.2 11l-1.2 3.8h-4L8.8 11z" fill="currentColor"/><path d="M12 8.6V5.2M15.2 11l3.3-1.1M14 14.8l2 2.8M10 14.8l-2 2.8M8.8 11 5.5 9.9"/><path d="M9.6 2.9 12 5.2l2.4-2.3M20.6 8.4l-2.1 1.5.5 3.3M17.8 19.6 16 17.6l-3 .6M6.2 19.6 8 17.6l3 .6M3.4 8.4l2.1 1.5-.5 3.3"/></g></svg>';
 
 // Maç kartı/satırı → detay. Önceki ekran ve kaydırma konumu geri dönüş için saklanır.
 function macAc(id) {
@@ -754,12 +755,12 @@ function skorAlani(m) {
 function olayIcerik(o) {
   switch (o.tur) {
     case 'gol': return `${TOP_SIMGE}<span><b>${kacis(o.oyuncu)}</b><small>Gol${o.asist ? ` · asist ${kacis(o.asist)}` : ''}</small></span>`;
-    case 'penalti': return `${TOP_SIMGE}<span><b>${kacis(o.oyuncu)}</b><small>Penaltı</small></span>`;
-    case 'kk': return `${TOP_SIMGE}<span><b>${kacis(o.oyuncu)}</b><small>Kendi kalesine</small></span>`;
+    case 'penalti': return `<span class="top-etiketli">${TOP_SIMGE}<span class="gol-etiket" title="Penaltı">P</span></span><span><b>${kacis(o.oyuncu)}</b><small>Penaltı</small></span>`;
+    case 'kk': return `<span class="top-etiketli">${TOP_SIMGE}<span class="gol-etiket" title="Kendi kalesine">KK</span></span><span><b>${kacis(o.oyuncu)}</b><small>Kendi kalesine</small></span>`;
     case 'penalti_kacti': return `<span><b>${kacis(o.oyuncu)}</b><small>Kaçan penaltı</small></span>`;
     case 'sari': return `${KART_SIMGE('#f5c400')}<span><b>${kacis(o.oyuncu)}</b><small>Sarı kart</small></span>`;
     case 'kirmizi': return `${KART_SIMGE('#e5322d')}<span><b>${kacis(o.oyuncu)}</b><small>Kırmızı kart</small></span>`;
-    case 'degisiklik': return `${DEGISIKLIK_SIMGE}<span><b class="giren"><span aria-label="Giren">↑</span> ${kacis(o.giren)}</b><small><span aria-label="Çıkan">↓</span> ${kacis(o.cikan)}</small></span>`;
+    case 'degisiklik': return `${DEGISIKLIK_SIMGE}<span><span class="giren"><span class="ok-giren" aria-label="Giren">↑</span> ${kacis(o.giren)}</span><small><span class="ok-cikan" aria-label="Çıkan">↓</span> ${kacis(o.cikan)}</small></span>`;
     default: return '';
   }
 }
@@ -771,7 +772,7 @@ function cizOzet(v) {
     const ic = `<div class="olay-ic">${olayIcerik(o)}</div>`;
     return `<li class="olay tur-${o.tur}">
       <div class="olay-taraf ev">${o.taraf === 'ev' ? ic : ''}</div>
-      <div class="olay-dk${gol ? ' gol' : ''}">${kacis(o.dk)}</div>
+      <div class="olay-dk${gol ? ' gol' : ''}${o.tur === 'degisiklik' ? ' kucuk' : ''}${o.dk.length > 4 ? ' uzun' : ''}">${kacis(o.dk)}</div>
       <div class="olay-taraf dep">${o.taraf === 'dep' ? ic : ''}</div>
     </li>`;
   }).join('');
@@ -784,9 +785,12 @@ function cizIstatistik(v) {
     const a = sayi(s.ev), b = sayi(s.dep);
     const oran = a + b ? Math.round((a / (a + b)) * 100) : 50;
     const yuzde = s.ad === 'topa_sahip' ? '%' : '';
+    // ikisi 0: iki taraf nötr gri; biri 0: o tarafın çubuğu hiç yok
+    const cubuk = !a && !b ? '<span class="bos" style="flex:1"></span><span class="bos" style="flex:1"></span>'
+      : `${a ? `<span class="ev" style="flex:${oran}"></span>` : ''}${b ? `<span class="dep" style="flex:${100 - oran}"></span>` : ''}`;
     return `<div class="ist-satir">
       <div class="ist-ust"><b>${yuzde}${kacis(s.ev)}</b><span>${kacis(ISTATISTIK_ADLARI[s.ad] || s.ad)}</span><b>${yuzde}${kacis(s.dep)}</b></div>
-      <div class="ist-cubuk" aria-hidden="true"><span class="ev" style="flex:${oran}"></span><span class="dep" style="flex:${100 - oran}"></span></div>
+      <div class="ist-cubuk" aria-hidden="true">${cubuk}</div>
     </div>`;
   }).join('')}</div>`;
 }
@@ -794,7 +798,12 @@ function cizIstatistik(v) {
 function cizKadro(v, m) {
   const taraflar = ['ev', 'dep'].filter((t) => v.kadro[t]);
   const secili = taraflar.includes(durum.detay.kadroTaraf) ? durum.detay.kadroTaraf : taraflar[0];
-  const k = v.kadro[secili];
+  // ilk 11 mevkiye göre (KL, DF, OS, FV; aynı mevkide ESPN sırası), yedeklerde oyuna girenler üstte (sort kararlı)
+  const MEVKI_SIRA = { KL: 0, DF: 1, OS: 2, FV: 3 };
+  const k = {
+    ilk11: [...v.kadro[secili].ilk11].sort((a, b) => (MEVKI_SIRA[a.poz] ?? 4) - (MEVKI_SIRA[b.poz] ?? 4)),
+    yedek: [...v.kadro[secili].yedek].sort((a, b) => !!b.girdi - !!a.girdi),
+  };
   const oyuncu = (o) => `<li class="oyuncu"><span class="forma">${kacis(o.no)}</span><span class="oy-ad">${kacis(o.ad)}${o.cikti ? ' <span class="oy-not" aria-label="oyundan çıktı">↓</span>' : ''}${o.girdi ? ' <span class="oy-not giren" aria-label="oyuna girdi">↑</span>' : ''}</span><span class="oy-poz" title="${kacis(MEVKI_ADLARI[o.poz] || '')}">${kacis(o.poz)}</span></li>`;
   return `<div class="dizilisler">${['ev', 'dep'].map((t) => `<div class="dizilis">${logoHtml(m[t])}<span>${kacis(m[t].kisa || m[t].ad)}</span><b>${kacis(v.kadro[t]?.dizilis || '—')}</b></div>`).join('')}</div>
     ${taraflar.length > 1 ? `<div class="bolmeli uc" role="tablist" aria-label="Takım" style="grid-template-columns:1fr 1fr">${taraflar.map((t) =>

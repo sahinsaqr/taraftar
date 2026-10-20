@@ -393,8 +393,23 @@ body.detayda { padding-bottom: calc(24px + var(--alt-bosluk)); }
 .olay-ic { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .olay-taraf.ev .olay-ic { flex-direction: row-reverse; text-align: right; }
 .olay-ic b { display: block; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+/* gol satırında oyuncu adı belirgin */
+.tur-gol .olay-ic b, .tur-penalti .olay-ic b, .tur-kk .olay-ic b { font-size: 16px; }
+.top-etiketli { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.olay-taraf.ev .top-etiketli { flex-direction: row-reverse; }
+.gol-etiket {
+  font: 700 11px/1 var(--yazi-tipi-dar); letter-spacing: .03em; padding: 2px 4px; border-radius: 4px;
+  background: var(--yuzey-2); color: var(--yazi); border: 1px solid var(--cizgi);
+}
+/* değişiklik sakin: ad ana renk normal kalınlık, ↑ yeşil, çıkan ikincil, ↓ kırmızımsı; daire küçük */
+.olay-ic .giren { display: block; font-size: 14px; font-weight: 400; color: var(--yazi); overflow-wrap: anywhere; }
+.ok-giren { color: var(--vurgu); font-weight: 700; }
+.ok-cikan { color: var(--canli-yazi); font-weight: 700; }
+.olay-dk.kucuk { width: 34px; height: 34px; font-size: 12px; justify-self: center; }
+/* uzatma dakikaları ("90'+12'") daireye sığsın */
+.olay-dk.uzun { font-size: 11px; letter-spacing: -.04em; }
+.olay-dk.kucuk.uzun { font-size: 9.5px; }
 .olay-ic small { display: block; font-size: 12px; color: var(--yazi-2); }
-.olay-ic .giren { color: var(--vurgu); }
 .olay-simge { flex: none; color: var(--yazi-2); }
 .tur-gol .olay-simge, .tur-penalti .olay-simge, .tur-kk .olay-simge { color: var(--yazi); }
 .olay-ayrac { display: flex; justify-content: center; padding: 6px 0; position: relative; z-index: 1; }
@@ -412,7 +427,8 @@ body.detayda { padding-bottom: calc(24px + var(--alt-bosluk)); }
 .ist-ust b:last-child { text-align: right; }
 .ist-ust span { text-align: center; font-size: 13px; font-weight: 600; color: var(--yazi-2); }
 .ist-cubuk { display: flex; gap: 4px; height: 6px; margin-top: 8px; }
-.ist-cubuk span { border-radius: 3px; min-width: 3px; }
+.ist-cubuk span { border-radius: 3px; }
+.ist-cubuk .bos { background: var(--cizgi); }
 .ist-cubuk .ev { background: var(--ist-ev); }
 .ist-cubuk .dep { background: var(--ist-dep); }
 

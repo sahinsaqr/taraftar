@@ -246,13 +246,18 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
 - Sekmeler: Özet | İstatistik | Kadrolar; verisi olmayan gizlenir, tek sekme kalırsa sekme çubuğu da gizlenir;
   hiçbiri yoksa yalnız skor alanı ve "Bu maç için ayrıntı henüz yok".
 - **Özet:** dikey zaman çizelgesi, en yeni üstte. Ortada 44px dakika dairesi (gol/penaltı/kendi kalesine: lime zemin +
-  koyu yazı). Ev sahibi olayları solda (sağa hizalı), deplasman sağda; olayın yanında simge (top, sarı/kırmızı kart,
-  iki ok). Gol: oyuncu kalın, altında "Gol · asist X" / "Penaltı" / "Kendi kalesine". Değişiklik: "↑ giren" (vurgu)
-  ve "↓ çıkan". Devre arası / maç sonu ayraç hapı.
+  koyu yazı); değişiklikte 34px küçük daire; uzatma dakikalarında ("90'+12'") yazı küçülür. Ev sahibi olayları solda
+  (sağa hizalı), deplasman sağda; olayın yanında simge: futbol topu (20px, ince çizgi, daire + ortada beşgen + kenarda
+  beşgen parçaları; penaltıda yanında "P", kendi kalesinde "KK" etiketi), sarı/kırmızı kart, iki ok.
+  Gol: oyuncu adı 16px kalın, altında "Gol · asist X" / "Penaltı" / "Kendi kalesine".
+  Değişiklik sakin: giren adı ana metin rengi normal kalınlık, yalnız ↑ oku yeşil (`--vurgu`); çıkan ikincil renkte,
+  ↓ oku kırmızımsı (`--canli-yazi`). Devre arası / maç sonu ayraç hapı.
 - **İstatistik:** kart içinde; her satırda ev değeri · ad · deplasman değeri, altında oran çubuğu
   (`--ist-ev`: koyuda lime, açıkta #3F6B00; `--ist-dep`: #6280AC).
+  İki değer de 0 ise iki taraf nötr gri (`--cizgi`); biri 0 ise o tarafın çubuğu hiç çizilmez.
 - **Kadrolar:** üstte iki takımın dizilişi (kutular), takım seçici (ev / deplasman), "İLK 11" ve "YEDEKLER" listeleri
-  (forma no, ad, mevki). Saha çizimi yok.
+  (forma no, ad, mevki). İlk 11 mevkiye göre (KL, DF, OS, FV; aynı mevkide ESPN sırası); yedeklerde oyuna girenler
+  üstte. Saha çizimi yok.
 
 ## Bildirimler
 
