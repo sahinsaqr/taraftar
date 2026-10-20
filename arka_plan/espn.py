@@ -94,6 +94,12 @@ def _logo(team):
     return logos[0].get("href") if logos else ""
 
 
+def _renk(deger):
+    """ESPN rengi ("c8102e") ya da boş; logo yüklenemezse uygulama bu renkte yuvarlak çizer."""
+    deger = (deger or "").strip().lstrip("#").lower()
+    return deger if len(deger) == 6 and all(c in "0123456789abcdef" for c in deger) else ""
+
+
 def _takim(c):
     t = c.get("team", {})
     return {
@@ -101,6 +107,8 @@ def _takim(c):
         "ad": turkce(t.get("displayName") or t.get("name") or ""),
         "kisa": t.get("abbreviation", ""),
         "logo": _logo(t),
+        "renk": _renk(t.get("color")),
+        "renk2": _renk(t.get("alternateColor")),
     }
 
 
@@ -286,5 +294,7 @@ def lig_takimlari(lig_kodu):
                     "ad": turkce(t.get("displayName") or t.get("name") or ""),
                     "kisa": t.get("abbreviation", ""),
                     "logo": _logo(t),
+                    "renk": _renk(t.get("color")),
+                    "renk2": _renk(t.get("alternateColor")),
                 })
     return takimlar

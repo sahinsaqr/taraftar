@@ -4,7 +4,6 @@
 import { Bulut, BILDIRIM_TURLERI, VARSAYILAN_BILDIRIM } from './bulut.js';
 
 const DEPO = 'ft_takip';
-const SEKME_DEPO = 'ft_sekme';
 const BILDIRIM_DEPO = 'ft_bildirim';
 const TEMA_DEPO = 'ft_tema';   // index.html'deki ilk çizim betiği de bunu okur
 const SIRALAMA_DEPO = 'ft_siralama';
@@ -14,36 +13,35 @@ const VERI_KOK = Bulut.yerel ? 'https://taraftar.mlkcraft.com/' : '';
 // MLK Craft'ın ortak gizlilik politikası (Google Play'e verilen adresle aynı)
 const PRIVACY_URL = 'https://mlkcraft.com/privacy#taraftar';
 const FEEDBACK_EMAIL = 'info@mlkcraft.com';
-// Hesap sekmesindeki "Gizlilik Politikası" penceresinde gösterilen kısa özet
+// Profil'deki "Gizlilik politikası" penceresinde gösterilen kısa özet
 const GIZLILIK_OZETI = [
   ['Hangi verileri saklıyoruz?', 'Takip ettiğin takımlar ve bildirim ayarların cihazında ve Google Firebase sunucularında (Avrupa) saklanır. Uygulamayı kullanmak için hesap açman gerekmez; ilk açılışta anonim bir hesap oluşturulur. Google ile giriş yaparsan adın, e-posta adresin ve profil fotoğrafın yalnızca hesabını tanımak ve takımlarını cihazların arasında eşitlemek için kullanılır.'],
   ['Bildirimler', 'Android uygulamasında bildirimlere izin verirsen cihazın bir bildirim belirteci alır ve takip ettiğin takımların bildirim konularına abone olur. Sunucumuz kimin hangi takımı takip ettiğini bilmez; bildirimler takım konularına gönderilir.'],
   ['Maç verileri', 'Skorlar, fikstür ve puan durumu üçüncü taraf spor veri kaynaklarından alınır. Uygulamada reklam ya da analiz aracı yoktur.'],
-  ['Verilerini silme', 'Hesap > Hesabımı sil ile buluttaki ve bu cihazdaki takım listeni, bildirim ayarlarını ve hesabını istediğin an kalıcı olarak silebilirsin. Çıkış yapınca takımların bu cihazdan kaldırılır, hesabında kalır.'],
+  ['Verilerini silme', 'Profil > Hesabımı sil ile buluttaki ve bu cihazdaki takım listeni, bildirim ayarlarını ve hesabını istediğin an kalıcı olarak silebilirsin. Çıkış yapınca takımların bu cihazdan kaldırılır, hesabında kalır.'],
   ['İletişim', `Gizlilikle ilgili soruların için: ${FEEDBACK_EMAIL}`],
 ];
-const TEMA_ADLARI = { sistem: '📱 Sistem', acik: '☀️ Açık', koyu: '🌙 Koyu' };
-const SIRALAMA_ADLARI = { elle: '✋ Elle', otomatik: '⚡ Otomatik', karisik: '🔀 Karışık' };
+const TEMA_ADLARI = { sistem: 'Sistem', acik: 'Açık', koyu: 'Koyu' };
+const SIRALAMA_ADLARI = { elle: 'Elle', otomatik: 'Otomatik', karisik: 'Karışık' };
 const SIRALAMA_ACIKLAMA = {
   elle: 'Takımlar senin belirlediğin sırada durur',
   otomatik: 'Canlı maçı olanlar üstte, sonra sıradaki maçı en yakın olanlar',
   karisik: 'Senin sıran geçerli; maçı canlı olanlar geçici olarak üste çıkar',
 };
-const TEMA_RENGI = { acik: '#f2f5f3', koyu: '#0e1512' };  // --zemin; index.html ile aynı
+const TEMA_RENGI = { acik: '#eef2f8', koyu: '#1b2d4b' };  // --zemin; index.html ile aynı
 const BILDIRIM_ADLARI = {
-  gol: 'Goller',
-  mac: 'Maç başladı / devre arası',
-  son: 'Maç sonucu',
-  hat: 'Maçtan 15 dk önce hatırlat',
+  gol: ['Goller', 'Takımın gol atınca ya da gol yiyince'],
+  mac: ['Maç başladı · devre arası', 'Başlama düdüğü ve devre arası skoru'],
+  son: ['Maç sonucu', 'Maç bitince skor; ertelenirse haber'],
+  hat: ['Maçtan önce hatırlatma', 'Maç başlamadan 15 dakika önce'],
 };
 
-const ilkSekme = depoOku(SEKME_DEPO, 'takimlar');
 const durum = {
   takip: depoOku(DEPO, []),
   ligler: [],
   ligVeri: {},          // kod -> lig_*.json içeriği
   canli: null,
-  sekme: ilkSekme === 'ayarlar' ? 'hesap' : ilkSekme,  // eski sürümdeki "Bildirim" sekmesi
+  sekme: 'maclar',      // maclar | takimlar | ekle (Takımlar'ın alt ekranı) | puan | profil
   macSekme: 'yaklasan',
   puanLig: null,
   ekleLig: null,
@@ -58,6 +56,8 @@ const durum = {
   islem: false,         // giriş/çıkış/silme sürüyor
   onay: null,           // sayfa içi pencere: 'sil' | 'gizlilik'
   hedefMac: null,       // bildirime dokunulunca gidilecek maç
+  izin: null,           // bildirim izni: granted | denied | prompt… (web'de null)
+  surum: '',            // package.json → version
 };
 let yenilemeZamanlayici = null;
 
@@ -138,13 +138,46 @@ function goreceliZaman(iso) {
   return `${Math.round(sa / 24)} gün önce`;
 }
 
+// Göreli parlaklık ve kontrast oranı (WCAG); "1b2d4b" ya da "#1b2d4b"
+function parlaklik(hex) {
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.replace('#', '').slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const kontrast = (a, b) => { const [x, y] = [parlaklik(a), parlaklik(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const renkMi = (s) => /^#?[0-9a-f]{6}$/i.test(s || '');
+
+// ligler.json'daki takım bilgisi (kısaltma, kulüp renkleri); takip listesinde ve puan tablosunda eksik olabiliyor
+function ligTakimi(id) {
+  if (ligTakimi.kaynak !== durum.ligler) {
+    ligTakimi.kaynak = durum.ligler;
+    ligTakimi.harita = new Map(durum.ligler.flatMap((l) => (l.takimlar || []).map((t) => [t.id, t])));
+  }
+  return ligTakimi.harita.get(id);
+}
+
+/** Logo yoksa ya da yüklenemezse kulüp renginde yuvarlak + kısaltma. Yazı rengi alternateColor
+    zeminle 4.5:1 veriyorsa odur, yoksa beyaz ya da lacivertten okunaklı olanı. */
+function logoYedek(takim, boyut, px) {
+  const lt = ligTakimi(takim.id) || durum.takip.find((t) => t.id === takim.id) || {};
+  const bas = kacis((takim.kisa || lt.kisa || takim.ad || '?').slice(0, 3).toLocaleUpperCase('tr'));
+  const renk = takim.renk || lt.renk;
+  let stil = `width:${px}px;height:${px}px`;
+  if (renkMi(renk)) {
+    const r2 = takim.renk2 || lt.renk2;
+    const yazi = renkMi(r2) && kontrast(renk, r2) >= 4.5 ? r2
+      : kontrast(renk, 'ffffff') >= kontrast(renk, '1b2d4b') ? 'ffffff' : '1b2d4b';
+    stil += `;background:#${renk.replace('#', '')};color:#${yazi.replace('#', '')}`;
+  }
+  return `<div class="logo ${boyut} logo-yedek" style="${stil}" aria-hidden="true">${bas}</div>`;
+}
+
 function logoHtml(takim, boyut = 'kucuk') {
   const px = { kucuk: 24, orta: 32, '': 40 }[boyut] ?? 40;
   let url = takim.logo || '';
   const m = url.match(/^https:\/\/a\.espncdn\.com(\/i\/.+\.png)/);
   if (m) url = `https://a.espncdn.com/combiner/i?img=${m[1]}&w=${px * 2}&h=${px * 2}`;
-  const bas = kacis((takim.kisa || takim.ad || '?').slice(0, 3).toUpperCase());
-  const yedek = `<div class="logo ${boyut} logo-yedek" style="width:${px}px;height:${px}px">${bas}</div>`;
+  const yedek = logoYedek(takim, boyut, px);
   if (!url) return yedek;
   return `<img class="logo ${boyut}" src="${kacis(url)}" alt="" loading="lazy" width="${px}" height="${px}"
     onerror="this.outerHTML=this.dataset.yedek" data-yedek="${kacis(yedek)}">`;
@@ -242,12 +275,17 @@ function ciz() {
   if (surukleniyor) { cizBekliyor = true; return; }
   siralayici?.destroy();
   siralayici = null;
-  document.querySelectorAll('.alt-menu button').forEach((b) =>
-    b.classList.toggle('aktif', b.dataset.sekme === durum.sekme));
+  // Takım ekle, Takımlar'ın alt ekranı: menüde Takımlar seçili kalır
+  const menuSekme = durum.sekme === 'ekle' ? 'takimlar' : durum.sekme;
+  document.querySelectorAll('.alt-menu button').forEach((b) => {
+    const secili = b.dataset.sekme === menuSekme;
+    b.classList.toggle('aktif', secili);
+    if (secili) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
   const icerik = $('#icerik');
-  const ciziciler = { takimlar: cizTakimlar, maclar: cizMaclar, puan: cizPuan, ekle: cizEkle, hesap: cizHesap };
-  icerik.innerHTML = (durum.hata && durum.sekme !== 'hesap' ? `<div class="uyari">${kacis(durum.hata)}</div>` : '') +
-    (ciziciler[durum.sekme] || cizTakimlar)() + onayKutusu();
+  const ciziciler = { takimlar: cizTakimlar, maclar: cizMaclar, puan: cizPuan, ekle: cizEkle, profil: cizProfil };
+  icerik.innerHTML = (durum.hata && durum.sekme !== 'profil' ? `<div class="uyari">${kacis(durum.hata)}</div>` : '') +
+    (ciziciler[durum.sekme] || cizMaclar)() + onayKutusu();
   durumSatiri();
   hedefeGit();
   if (durum.sirala && durum.sekme === 'takimlar') suruklemeKur();
@@ -354,10 +392,13 @@ function cizTakimlar() {
       ${parcalar.join('')}
     </article>`;
   });
-  const ust = siralanabilir() ? '<div class="sirala-cubuk"><button class="dugme ikincil kucuk" id="siralaBtn">⇅ Sırala</button></div>' : '';
+  const ust = `<div class="ekran-ust"><h2 class="ekran-baslik">Takımlarım</h2>
+    ${siralanabilir() ? '<button class="dugme ikincil kucuk" id="siralaBtn">⇅ Sırala</button>' : ''}
+    <button class="dugme kucuk" data-git="ekle">${ARTI} Takım ekle</button></div>`;
   return `${ust}<div class="kartlar iki">${kartlar.join('')}</div>`;
 }
 
+const ARTI = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/></svg>';
 const TUTAMAC = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 7h16v2H4zm0 4h16v2H4zm0 4h16v2H4z"/></svg>';
 
 // Elle sıralama: sağdaki tutamaçtan (≡) sürükle-bırak; satırın geri kalanında sayfa kayar.
@@ -473,7 +514,7 @@ function cizMaclar() {
     govde += `<h2 class="bolum-baslik">Son sonuçlar</h2>` +
       (biten.length ? gunlereGore(biten.slice(-40), true) : '<div class="kart bos">Henüz sonuç yok.</div>');
   }
-  return sekmeler + govde;
+  return `<div class="ekran-ust"><h2 class="ekran-baslik">Maçlar</h2></div>` + sekmeler + govde;
 }
 
 // ---- Puan durumu
@@ -483,7 +524,7 @@ function cizPuan() {
   const sirali = [...durum.ligler].sort((a, b) => (oncelikli.has(b.kod) - oncelikli.has(a.kod)));
   if (!durum.puanLig) durum.puanLig = durum.takip[0]?.lig || sirali[0].kod;
   const kod = durum.puanLig;
-  const secici = `<div class="secici">${sirali.map((l) =>
+  const secici = `<div class="ekran-ust"><h2 class="ekran-baslik">Puan durumu</h2></div><div class="secici">${sirali.map((l) =>
     `<button class="cip ${l.kod === kod ? 'aktif' : ''}" data-puanlig="${kacis(l.kod)}">${kacis(l.ad)}</button>`).join('')}</div>`;
   const veri = durum.ligVeri[kod];
   if (!veri) {
@@ -538,8 +579,11 @@ function cizEkle() {
   }
   const takipteki = durum.takip.length ? `<h2 class="bolum-baslik">Takip ettiklerin (${durum.takip.length})</h2>
     <div class="takim-izgara">${durum.takip.map((t) => takimDugme(t, true)).join('')}</div>` : '';
-  return `${takipteki}
-    <h2 class="bolum-baslik">Takım ekle</h2>
+  return `<div class="ekran-ust"><button class="geri-dugme" data-git="takimlar" aria-label="Takımlarım'a dön">
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <h2 class="ekran-baslik">Takım ekle</h2></div>
+    ${takipteki}
+    <h2 class="bolum-baslik">Ara ya da ligden seç</h2>
     <input class="arama" id="arama" type="search" placeholder="Takım ara (ör. Galatasaray, Arsenal)" value="${kacis(durum.arama)}" autocomplete="off">
     ${q ? '' : `<div class="secici">${durum.ligler.map((l) =>
       `<button class="cip ${l.kod === durum.ekleLig ? 'aktif' : ''}" data-eklelig="${kacis(l.kod)}">${kacis(l.ad)}</button>`).join('')}</div>`}
@@ -562,8 +606,8 @@ function takimDegistir(id, lig) {
     const t = l?.takimlar.find((x) => x.id === id);
     if (!t) return;
     if (durum.takip.length >= AZAMI_TAKIM) { tost(`En fazla ${AZAMI_TAKIM} takım takip edebilirsin`); return; }
-    if (!durum.takip.length) Bulut.bildirimIzniIste().catch(() => {});
-    durum.takip.push({ id: t.id, ad: t.ad, kisa: t.kisa, logo: t.logo, lig });
+    if (!durum.takip.length) izinIste();
+    durum.takip.push({ id: t.id, ad: t.ad, kisa: t.kisa, logo: t.logo, lig, ...(t.renk && { renk: t.renk, renk2: t.renk2 || '' }) });
     tost(`${t.ad} eklendi`);
     // bu takımın liglerini yükle
     Promise.all(gerekliLigler().filter((k) => !durum.ligVeri[k]).map(ligYukle)).then(() => ciz());
@@ -610,7 +654,7 @@ async function bulutBaslat() {
     await Bulut.baslat();
     await esitle();
     durum.bulut = 'hazir';
-    if (durum.takip.length) Bulut.bildirimIzniIste().catch(() => {});
+    if (durum.takip.length) izinIste(); else izinKontrol();
   } catch (h) {
     console.warn('bulut', h);
     durum.bulut = 'hata';
@@ -661,7 +705,7 @@ const hesabiSil = () => hesapIslemi(async () => {
 function bildirimDegistir(tur) {
   durum.bildirim = { ...durum.bildirim, [tur]: !durum.bildirim[tur] };
   depoYaz(BILDIRIM_DEPO, durum.bildirim);
-  if (durum.bildirim[tur]) Bulut.bildirimIzniIste().catch(() => {});
+  if (durum.bildirim[tur]) izinIste();
   if (durum.bulut === 'hazir') {
     Bulut.bildirimAyarlariYaz(durum.bildirim).catch((h) => console.warn(h));
     Bulut.abonelikleriEsitle(durum.takip, durum.bildirim).catch(() => {});
@@ -676,7 +720,11 @@ function temaUygula() {
   document.documentElement.dataset.tema = tema;
   $('meta[name="theme-color"]').content = TEMA_RENGI[tema];
   // Android'de uygulama çubukların arkasına çizilir; zemin sayfadan gelir, simge rengi buradan
-  if (Bulut.yerel) window.Capacitor.Plugins.SystemBars?.setStyle({ style: tema === 'acik' ? 'LIGHT' : 'DARK' }).catch(() => {});
+  // durum/gezinme çubuğu bölgesi pencere zeminini gösterir (MainActivity'deki Zemin eklentisi)
+  if (Bulut.yerel) {
+    window.Capacitor.Plugins.SystemBars?.setStyle({ style: tema === 'acik' ? 'LIGHT' : 'DARK' }).catch(() => {});
+    window.Capacitor.Plugins.Zemin?.ayarla({ renk: TEMA_RENGI[tema] }).catch(() => {});
+  }
 }
 sistemAcik.addEventListener('change', () => { if (durum.tema === 'sistem') temaUygula(); });
 
@@ -693,76 +741,131 @@ function temaDegistir(tema) {
   ciz();
 }
 
-// ---- Hesap
-const GOOGLE_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+// ---- Bildirim izni (yalnız Android): Profil'de izin yoksa üstte izin düğmesi
+async function izinKontrol() {
+  const izin = await Bulut.bildirimIzni().catch(() => null);
+  if (izin === durum.izin) return;
+  durum.izin = izin;
+  if (durum.sekme === 'profil') ciz();
+}
+const izinIste = () => Bulut.bildirimIzniIste().catch(() => {}).finally(izinKontrol);
 
-// Hesap'taki seçenek satırı (Görünüm Modu, Takım Sıralaması): data-<ad>="<değer>" düğmeleri
+async function izinDugmesi() {
+  const verildi = await Bulut.bildirimIzniIste().catch(() => false);
+  await izinKontrol();
+  // Android iki kez reddedilince pencereyi bir daha göstermez
+  if (!verildi) tost('İzin verilmedi. Telefonun Ayarlar > Uygulamalar > Taraftar > Bildirimler bölümünden açabilirsin.', 5000);
+}
+
+// ---- Profil
+const GOOGLE_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+const PROFIL_SIMGE = '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="4" fill="none" stroke="currentColor" stroke-width="1.75"/><path d="M4.5 20.5c1-3.8 4-5.5 7.5-5.5s6.5 1.7 7.5 5.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>';
+const SAG_OK = '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DIS_OK = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// Profil'deki seçenek satırı (Görünüm, Takım sıralaması): data-<ad>="<değer>" düğmeleri
 function secimSatiri(baslik, aciklama, ad, secenekler, secili) {
   return `<div class="ayar-satir">
-      <span><b>${kacis(baslik)}</b><small>${kacis(aciklama)}</small></span>
+      <span><b>${kacis(baslik)}</b>${aciklama ? `<small>${kacis(aciklama)}</small>` : ''}</span>
       <div class="ayar-secici" role="group" aria-label="${kacis(baslik)}">${Object.entries(secenekler).map(([deger, etiket]) =>
         `<button data-${ad}="${deger}" class="${secili === deger ? 'aktif' : ''}" aria-pressed="${secili === deger}">${etiket}</button>`).join('')}</div>
     </div>`;
 }
 
-function cizHesap() {
+// "Şahiner Solak" → "ŞS"; ad yoksa e-postanın ilk harfi
+function basHarfler(k) {
+  const parca = (k.ad || '').trim().split(/\s+/).filter(Boolean);
+  const h = parca.length > 1 ? parca[0][0] + parca[parca.length - 1][0] : (parca[0] || k.eposta || '?')[0];
+  return h.toLocaleUpperCase('tr');
+}
+
+function hesapKarti() {
   const k = Bulut.kullanici;
   const bekle = durum.islem ? 'disabled' : '';
-  let hesap;
+  let ic;
   if (durum.bulut === 'baglaniyor') {
-    hesap = '<p>Hesaba bağlanılıyor…</p>';
+    ic = '<p class="kart-not">Hesaba bağlanılıyor…</p>';
   } else if (durum.bulut === 'hata' || !k) {
-    hesap = `<p>Hesaba bağlanılamadı. Takımların bu cihazda kayıtlı; bağlantı gelince eşitlenir.</p>
-      <div class="satir-dugmeler"><button class="dugme ikincil" id="bulutTekrarBtn">Tekrar dene</button></div>`;
+    ic = `<p class="kart-not">Hesaba bağlanılamadı. Takımların bu cihazda kayıtlı; bağlantı gelince eşitlenir.</p>
+      <button class="dugme ikincil genis" id="bulutTekrarBtn">Tekrar dene</button>`;
   } else if (k.misafir) {
-    hesap = `<div class="profil"><div class="avatar">?</div><div><b>Misafir</b><small>Hesabın bu cihaza bağlı</small></div></div>
-      <p>Giriş yaparsan takımların tüm cihazlarında görünür.</p>
-      <div class="satir-dugmeler"><button class="dugme google" id="googleBtn" ${bekle}>${GOOGLE_LOGO}Google ile giriş yap</button></div>`;
+    ic = `<div class="profil"><div class="avatar misafir" aria-hidden="true">${PROFIL_SIMGE}</div>
+        <div><b>Misafir</b><small>Takımların yalnız bu cihazda</small></div></div>
+      <p class="kart-not">Google ile giriş yaparsan takımların hesabına kaydedilir ve tüm cihazlarında görünür.</p>
+      <button class="dugme google genis" id="googleBtn" ${bekle}>${GOOGLE_LOGO}Google ile giriş yap</button>`;
   } else {
-    const foto = k.foto ? `<img class="avatar" src="${kacis(k.foto)}" alt="" referrerpolicy="no-referrer">`
-      : `<div class="avatar">${kacis((k.ad || k.eposta || '?').slice(0, 1).toLocaleUpperCase('tr'))}</div>`;
-    hesap = `<div class="profil">${foto}<div><b>${kacis(k.ad || 'Google hesabı')}</b><small>${kacis(k.eposta)}</small></div></div>
-      <p>Takımların bu hesapta; giriş yaptığın her cihazda görünür.</p>
-      <div class="satir-dugmeler"><button class="dugme ikincil" id="cikisBtn" ${bekle}>Çıkış yap</button></div>`;
+    const foto = k.foto ? `<img class="avatar" src="${kacis(k.foto)}" alt="" referrerpolicy="no-referrer"
+        onerror="this.outerHTML=this.dataset.yedek" data-yedek="${kacis(`<div class="avatar">${kacis(basHarfler(k))}</div>`)}">`
+      : `<div class="avatar" aria-hidden="true">${kacis(basHarfler(k))}</div>`;
+    ic = `<div class="profil">${foto}<div><b>${kacis(k.ad || 'Google hesabı')}</b><small>${kacis(k.eposta)}</small></div></div>
+      <p class="bagli"><span class="bagli-nokta" aria-hidden="true"></span>Google ile bağlı · takımların eşitleniyor</p>
+      <button class="dugme ikincil genis" id="cikisBtn" ${bekle}>Çıkış yap</button>`;
   }
-
-  const bildirim = Bulut.yerel
-    ? `<div class="kart anahtarlar">${BILDIRIM_TURLERI.map((tur) => `
-        <button class="anahtar-satir" role="switch" aria-checked="${!!durum.bildirim[tur]}" data-bildirim="${tur}">
-          <span>${kacis(BILDIRIM_ADLARI[tur])}</span><span class="anahtar" aria-hidden="true"></span>
-        </button>`).join('')}
-        <p class="not">Bildirimler takip ettiğin takımların maçları için gelir.</p>
-      </div>`
-    : '<div class="kart adimlar"><p>Bildirimler Android uygulamasında. Web sürümünde hesabın ve takımların eşitlenir, bildirim gelmez.</p></div>';
-
-  const sil = k && durum.bulut === 'hazir'
-    ? `<div class="satir-dugmeler"><button class="dugme tehlike" id="silBtn" ${bekle}>Hesabımı sil</button></div>` : '';
-
-  return `
-    <h2 class="bolum-baslik">Hesap</h2>
-    <div class="kart adimlar hesap">${hesap}</div>
-
-    <h2 class="bolum-baslik">Bildirimler</h2>
-    ${bildirim}
-
-    <h2 class="bolum-baslik">Görünüm</h2>
-    <div class="kart ayarlar">
-      ${secimSatiri('Görünüm Modu', 'Sistem, cihazının açık/koyu ayarını izler', 'tema', TEMA_ADLARI, durum.tema)}
-      ${secimSatiri('Takım Sıralaması', SIRALAMA_ACIKLAMA[durum.siralama], 'siralama', SIRALAMA_ADLARI, durum.siralama)}
-    </div>
-
-    <h2 class="bolum-baslik">Uygulama hakkında</h2>
-    <div class="kart adimlar">
-      <p>Fikstür ve puan durumu birkaç saatte bir, maç sırasında skor dakikada bir güncellenir.</p>
-      <p>Son veri: ${kacis(goreceliZaman(durum.canli?.guncelleme || Object.values(durum.ligVeri)[0]?.guncelleme))}</p>
-      ${sil}
-    </div>
-    <div class="kart menu">
-      <button class="menu-satir" id="gizlilikBtn">
-        <span><b>🔒 Gizlilik Politikası</b><small>Hangi verileri nasıl kullandığımız</small></span><span aria-hidden="true">›</span>
-      </button>
-    </div>`;
+  return `<section class="kart profil-kart" aria-labelledby="pHesap"><h2 class="kart-baslik" id="pHesap">Hesap</h2>${ic}</section>`;
 }
+
+function bildirimKarti() {
+  if (!Bulut.yerel) {
+    return `<section class="kart profil-kart" aria-labelledby="pBildirim"><h2 class="kart-baslik" id="pBildirim">Bildirimler</h2>
+      <p class="kart-not">Bildirimler Android uygulamasında. Web sürümünde hesabın ve takımların eşitlenir, bildirim gelmez.</p></section>`;
+  }
+  // Takım bazında zil notu ("Bir takımın bildirimlerini tamamen kapatmak için...") 3. aşamada eklenecek.
+  // izin null: eklenti yok ya da henüz bilinmiyor → düğme gösterilmez
+  const izinYok = durum.izin && durum.izin !== 'granted';
+  const izin = izinYok ? `<div class="izin-kutu">
+      <p><b>Bildirim izni kapalı</b>Gol ve maç bildirimleri için izin vermen gerekiyor.</p>
+      <button class="dugme genis" id="izinBtn">Bildirimlere izin ver</button>
+    </div>` : '';
+  return `<section class="kart profil-kart anahtarlar" aria-labelledby="pBildirim"><h2 class="kart-baslik" id="pBildirim">Bildirimler</h2>
+    ${izin}
+    ${BILDIRIM_TURLERI.map((tur) => `
+      <button class="anahtar-satir" role="switch" aria-checked="${!!durum.bildirim[tur]}" data-bildirim="${tur}">
+        <span><b>${kacis(BILDIRIM_ADLARI[tur][0])}</b><small>${kacis(BILDIRIM_ADLARI[tur][1])}</small></span>
+        <span class="anahtar" aria-hidden="true"></span>
+      </button>`).join('')}
+  </section>`;
+}
+
+function cizProfil() {
+  const k = Bulut.kullanici;
+  const bekle = durum.islem ? 'disabled' : '';
+  const sonVeri = goreceliZaman(durum.canli?.guncelleme || Object.values(durum.ligVeri)[0]?.guncelleme);
+  const sil = k && durum.bulut === 'hazir' ? `<div class="sil-alani">
+      <button class="dugme sil-dugme genis" id="silBtn" ${bekle}>Hesabımı sil</button>
+      <p>Takım listen, bildirim ayarların ve hesabın kalıcı olarak silinir.</p>
+    </div>` : '';
+
+  return `<div class="ekran-ust"><h2 class="ekran-baslik">Profil</h2></div>
+    <div class="kartlar">
+    ${hesapKarti()}
+    ${bildirimKarti()}
+
+    <section class="kart profil-kart" aria-labelledby="pGorunum"><h2 class="kart-baslik" id="pGorunum">Görünüm</h2>
+      ${secimSatiri('Tema', 'Sistem, cihazının açık/koyu ayarını izler', 'tema', TEMA_ADLARI, durum.tema)}
+      ${secimSatiri('Takım sıralaması', SIRALAMA_ACIKLAMA[durum.siralama], 'siralama', SIRALAMA_ADLARI, durum.siralama)}
+    </section>
+
+    <section class="kart profil-kart menu" aria-labelledby="pHakkinda"><h2 class="kart-baslik" id="pHakkinda">Hakkında</h2>
+      <button class="menu-satir" id="gizlilikBtn">
+        <span><b>Gizlilik politikası</b><small>${kacis(PRIVACY_URL.replace(/^https:\/\//, ''))}</small></span>${SAG_OK}
+      </button>
+      <a class="menu-satir" href="mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent('Taraftar geri bildirim')}">
+        <span><b>Geri bildirim gönder</b><small>${FEEDBACK_EMAIL}</small></span>${DIS_OK}
+      </a>
+      <div class="menu-satir">
+        <span><b>Sürüm</b><small>Skorlar maç sırasında dakikada bir güncellenir · son veri ${kacis(sonVeri)}</small></span>
+        <span class="deger">${kacis(durum.surum || '—')}</span>
+      </div>
+    </section>
+    </div>
+    ${sil}`;
+}
+
+// Sürüm package.json'dan (web'de sitenin kökünde, Android'de www/ içinde)
+fetch('package.json').then((r) => r.json()).then((p) => {
+  durum.surum = p.version || '';
+  if (durum.sekme === 'profil') ciz();
+}).catch(() => {});
 
 function gizlilikPenceresi() {
   const adres = PRIVACY_URL.replace(/^https:\/\//, '');
@@ -817,17 +920,18 @@ Bulut.bildirimGelince((b) => {
 function sekmeyeGec(sekme) {
   durum.sekme = sekme;
   durum.sirala = false;
-  depoYaz(SEKME_DEPO, durum.sekme);
   ciz();
   window.scrollTo({ top: 0 });
 }
 
-// Android geri tuşu: pencere → sıralama modu → alt görünüm (takım araması) → Takımlarım → arka plan
+// Android geri tuşu: pencere → sıralama modu → takım araması → Takım ekle'den Takımlarım'a
+// → diğer sekmelerden Maçlar'a → arka plan
 function geriTusu() {
   if (durum.onay) { durum.onay = null; ciz(); return; }
   if (durum.sirala) { siralamaModu(false); return; }
   if (durum.sekme === 'ekle' && durum.arama) { durum.arama = ''; ciz(); return; }
-  if (durum.sekme !== 'takimlar') { sekmeyeGec('takimlar'); return; }
+  if (durum.sekme === 'ekle') { sekmeyeGec('takimlar'); return; }
+  if (durum.sekme !== 'maclar') { sekmeyeGec('maclar'); return; }
   const App = window.Capacitor.Plugins.App;
   App.minimizeApp().catch(() => App.exitApp());
 }
@@ -850,6 +954,7 @@ document.addEventListener('click', (e) => {
   else if (h.id === 'yenileBtn') yukle();
   else if (h.id === 'googleBtn') googleIleGiris();
   else if (h.id === 'cikisBtn') cikisYap();
+  else if (h.id === 'izinBtn') izinDugmesi();
   else if (h.id === 'silBtn') { durum.onay = 'sil'; ciz(); $('#onayIptal')?.focus(); }
   else if (h.id === 'onayIptal') { durum.onay = null; ciz(); }
   else if (h.id === 'gizlilikBtn') { durum.onay = 'gizlilik'; ciz(); $('#onayIptal')?.focus(); }
@@ -883,6 +988,8 @@ function zamanlayiciKur() {
   yenilemeZamanlayici = setTimeout(() => yukle({ sessiz: true }), sicak ? 60e3 : 15 * 60e3);
 }
 document.addEventListener('visibilitychange', () => {
+  // izin telefonun ayarlarından açılmış olabilir
+  if (document.visibilityState === 'visible' && Bulut.yerel) izinKontrol();
   if (document.visibilityState === 'visible' && (!durum.sonYukleme || Date.now() - durum.sonYukleme > 60e3)) yukle({ sessiz: true });
 });
 setInterval(() => { if (document.visibilityState === 'visible' && durum.sekme === 'takimlar' && !durum.sirala) ciz(); }, 60e3);

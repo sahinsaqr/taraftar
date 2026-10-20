@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Açılış ekranı ve uygulama zemini: koyu (lacivert) tema (TASARIM.md) -->
+    <color name="acilis_zemin">#1B2D4B</color>
+</resources>

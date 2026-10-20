@@ -1,7 +1,9 @@
 // Uygulama dosyalarını önbelleğe alır; internet yokken son veriler gösterilir.
-const SURUM = 'taraftar-v6';
+const SURUM = 'taraftar-v7';
 const KABUK = ['./', 'index.html', 'style.css', 'app.js', 'bulut.js', 'firebase-ayar.js', 'manifest.webmanifest',
-  'ikonlar/ikon.svg', 'ikonlar/ikon-192.png', 'ikonlar/apple-touch-icon.png', 'kutuphane/Sortable.min.js'];
+  'ikonlar/ikon.svg', 'ikonlar/ikon-192.png', 'ikonlar/apple-touch-icon.png', 'kutuphane/Sortable.min.js', 'package.json',
+  ...['barlow-latin', 'barlow-latin-ext'].flatMap((a) => [400, 500, 600, 700].map((k) => `yazitipleri/${a}-${k}-normal.woff2`)),
+  ...['barlow-condensed-latin', 'barlow-condensed-latin-ext'].flatMap((a) => [600, 700].map((k) => `yazitipleri/${a}-${k}-normal.woff2`))];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SURUM).then((c) => c.addAll(KABUK)).then(() => self.skipWaiting()));

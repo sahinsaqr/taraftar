@@ -144,6 +144,12 @@ class YerelBulut {
     try { localStorage.setItem(KONU_DEPO, JSON.stringify([...mevcut])); } catch { /* yok say */ }
   }
 
+  async bildirimIzni() {
+    if (!this.mesaj) return null;
+    const { receive } = await this.mesaj.checkPermissions();
+    return receive;
+  }
+
   async bildirimIzniIste() {
     if (!this.mesaj) return false;
     const { receive } = await this.mesaj.requestPermissions();
@@ -242,6 +248,7 @@ class WebBulut {
   }
 
   async abonelikleriEsitle() { /* web'de bildirim yok */ }
+  async bildirimIzni() { return null; }
   async bildirimIzniIste() { return false; }
   bildirimeDokununca() { /* web'de bildirim yok */ }
   bildirimGelince() { /* web'de bildirim yok */ }
@@ -284,6 +291,8 @@ export const Bulut = {
 
   /** Takım × açık bildirim türü konularına abone olur, fazlalardan çıkar (sadece Android) */
   abonelikleriEsitle: (takimlar, ayar) => ic.abonelikleriEsitle(takimlar, ayar),
+  /** Bildirim izni: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale'; web'de null */
+  bildirimIzni: () => ic.bildirimIzni(),
   /** Android 13+ bildirim izni penceresi; izin verildiyse true */
   bildirimIzniIste: () => ic.bildirimIzniIste(),
   /** Bildirime dokunulunca fn(data) çağrılır (data.mac = maç kimliği) */
