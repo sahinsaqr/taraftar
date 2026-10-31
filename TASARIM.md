@@ -279,7 +279,9 @@ Seçili sekme lime zemin + koyu yazı. Geri tuşu Geçmiş/Takvim'den önce Yakl
   yerine geçer), `data.mac` = maç kimliği (dokununca maç detayı açılır).
 - **Metinler** (başlık / gövde; skorlar `–` ile, saat Türkiye saati):
   - Gol: "⚽ GOL! Ev 2–1 Deplasman" / "67' Oyuncu · Golü atan takım"; kendi kalesine "67' Oyuncu (k.k.) · golün
-    yazıldığı takım"; penaltı "67' Oyuncu (p) · Takım". Gol listesi skorla uyuşmazsa "67' · Takım".
+    yazıldığı takım"; penaltı "67' Oyuncu (p) · Takım". Gol listesi skorla uyuşmazsa "67' · Takım";
+    golcü adı beklenmez, ESPN adı sonradan verince aynı bildirim (aynı etiket) sessizce golcüyle güncellenir
+    (yalnız veri mesajı, uygulama 1.0.2+; bildirim kaldırıldıysa yeniden çıkmaz).
   - VAR iptali: "❌ Gol iptal: Takım · 67'" / skor.
   - "Maç başladı: Ev – Deplasman", "Devre arası: Ev 1–0 Deplasman", "Maç sonu: Ev 2–1 Deplasman" / lig adı.
   - "Maç ertelendi: Ev – Deplasman" (mac_sonucu kanalı).

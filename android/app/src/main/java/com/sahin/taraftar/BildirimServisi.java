@@ -16,6 +16,7 @@ import android.graphics.Typeface;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
+import android.service.notification.StatusBarNotification;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -47,6 +48,9 @@ import java.util.concurrent.TimeUnit;
  * RemoteViews + DecoratedCustomViewStyle ile çizilir. Eklentinin MessagingService'ini genişletir (manifest'te
  * onun yerine bu kayıtlı), böylece veri mesajı yine JS'e iletilir (uygulama açıksa veri yenilenir).
  * Kanal, ses, etiket (maç id) ve renk sade metin bildirimiyle aynı; dokununca o maçın detayı açılır.
+ *
+ * "guncelle" (sade | kart) veri mesajı: golcü adı sonradan gelince sunucu (bildirim.py → guncelle) gönderir;
+ * maçın bildirimi hâlâ duruyorsa aynı etiketle sessizce yeniden çizilir, kaldırıldıysa bir şey yapılmaz.
  */
 public class BildirimServisi extends MessagingService {
 
@@ -58,12 +62,18 @@ public class BildirimServisi extends MessagingService {
     @Override
     public void onMessageReceived(@NonNull RemoteMessage mesaj) {
         Map<String, String> v = mesaj.getData();
-        if ("1".equals(v.get("kart"))) {
-            try {
-                kartGoster(v);
-            } catch (Exception h) {
-                Log.w(ETIKET, "skor kartı gösterilemedi", h);
+        gecikmeYaz(v);
+        String guncelle = al(v, "guncelle");
+        try {
+            if ("1".equals(v.get("kart"))) {
+                kartGoster(v, false);
+            } else if ("kart".equals(guncelle) && bildirimVar(al(v, "mac"))) {
+                kartGoster(v, true);
+            } else if ("sade".equals(guncelle) && bildirimVar(al(v, "mac"))) {
+                sadeGuncelle(v);
             }
+        } catch (Exception h) {
+            Log.w(ETIKET, "bildirim gösterilemedi", h);
         }
         super.onMessageReceived(mesaj);   // JS'e de iletilir (uygulama açıksa veri yenilenir)
     }
@@ -73,7 +83,63 @@ public class BildirimServisi extends MessagingService {
         return d == null ? "" : d;
     }
 
-    private void kartGoster(Map<String, String> v) {
+    /** Sunucunun gönderim anından varışa geçen süre (ölçüm için: adb logcat -s Taraftar.Kart). */
+    private static void gecikmeYaz(Map<String, String> v) {
+        try {
+            long gonderim = Long.parseLong(al(v, "gonderim"));
+            Log.i(ETIKET, al(v, "olay") + " " + al(v, "mac") + " gecikme " + (System.currentTimeMillis() - gonderim) + " ms");
+        } catch (NumberFormatException h) {
+            // eski sunucu: alan yok
+        }
+    }
+
+    /** Bu maçın (etiket = maç id) bildirimi bildirim çekmecesinde duruyor mu? */
+    private boolean bildirimVar(String mac) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || mac.isEmpty()) return false;
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return false;
+        for (StatusBarNotification s : nm.getActiveNotifications()) {
+            if (mac.equals(s.getTag())) return true;
+        }
+        return false;
+    }
+
+    /** Dokununca: FCM'nin bildirimiyle aynı yol (google.message_id + veri → eklenti → JS → maç detayı). */
+    private PendingIntent acmaNiyeti(Map<String, String> v) {
+        String mac = al(v, "mac");
+        Intent ac = new Intent(this, MainActivity.class)
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra("google.message_id", "kart-" + mac + "-" + System.currentTimeMillis())
+            .putExtra("mac", mac)
+            .putExtra("tur", al(v, "tur"))
+            .putExtra("olay", al(v, "olay"));
+        return PendingIntent.getActivity(this, mac.hashCode(), ac,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private boolean izinVar() {
+        return Build.VERSION.SDK_INT < 33
+            || ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Sade metin bildirimini (FCM'nin çizdiği) golcülü metinle sessizce değiştirir. */
+    private void sadeGuncelle(Map<String, String> v) {
+        String kanal = al(v, "kanal").isEmpty() ? "goller" : al(v, "kanal");
+        kanalHazirla(kanal);
+        NotificationCompat.Builder b = new NotificationCompat.Builder(this, kanal)
+            .setSmallIcon(R.drawable.ic_stat_taraftar)
+            .setColor(LIME)
+            .setContentTitle(al(v, "baslik"))
+            .setContentText(al(v, "govde"))
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setAutoCancel(true)
+            .setContentIntent(acmaNiyeti(v));
+        if (izinVar()) NotificationManagerCompat.from(this).notify(al(v, "mac"), 0, b.build());
+    }
+
+    private void kartGoster(Map<String, String> v, boolean sessiz) {
         String kanal = al(v, "kanal").isEmpty() ? "mac_durumu" : al(v, "kanal");
         kanalHazirla(kanal);
         String mac = al(v, "mac");
@@ -120,16 +186,6 @@ public class BildirimServisi extends MessagingService {
         buyuk.setTextViewText(R.id.durum, durum);
         buyuk.setViewVisibility(R.id.durum, durum.isEmpty() ? View.GONE : View.VISIBLE);
 
-        // dokununca: FCM'nin bildirimiyle aynı yol (google.message_id + veri → eklenti → JS → maç detayı)
-        Intent ac = new Intent(this, MainActivity.class)
-            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra("google.message_id", "kart-" + mac + "-" + System.currentTimeMillis())
-            .putExtra("mac", mac)
-            .putExtra("tur", al(v, "tur"))
-            .putExtra("olay", olay);
-        PendingIntent pi = PendingIntent.getActivity(this, mac.hashCode(), ac,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, kanal)
             .setSmallIcon(R.drawable.ic_stat_taraftar)
             .setColor(LIME)
@@ -142,12 +198,11 @@ public class BildirimServisi extends MessagingService {
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setPriority("goller".equals(kanal) ? NotificationCompat.PRIORITY_HIGH : NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
-            .setContentIntent(pi);
+            .setOnlyAlertOnce(sessiz)          // golcü güncellemesi: aynı bildirim, ikinci kez çalmaz
+            .setSilent(sessiz)
+            .setContentIntent(acmaNiyeti(v));
 
-        if (Build.VERSION.SDK_INT >= 33
-            && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
+        if (!izinVar()) return;
         NotificationManagerCompat.from(this).notify(mac, 0, b.build());   // etiket = maç id: aynı maçın yenisi öncekinin yerine
     }
 

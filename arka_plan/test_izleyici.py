@@ -149,6 +149,25 @@ class IzleyiciTesti(unittest.TestCase):
         mac_izle.degisiklikleri_bildir(b, eski, kk)
         self.assertIn(("gol", "⚽ GOL! Ev 2–1 Dep", "75' Savunmacı (k.k.) · Dep"), self.metinler)
 
+    def test_golcu_beklenmez_sonradan_guncellenir(self):
+        guncellenen = []
+        self.eski.setdefault((bildirim, "guncelle"), bildirim.guncelle)
+        bildirim.guncelle = lambda takimlar, tur, baslik, govde, mac_id, olay, kart: \
+            guncellenen.append((baslik, govde, mac_id, kart["oyuncu"]))
+        b = mac_izle.Bildirici([])
+        eski = mac_durumu(BASLAMA + timedelta(minutes=70))
+        adsiz = {**eski, "dep_skor": 1, "dakika": "71'"}          # ESPN skoru verdi, golcüyü henüz vermedi
+        mac_izle.degisiklikleri_bildir(b, eski, adsiz)
+        self.assertIn(("gol", "⚽ GOL! Ev 2–1 Dep", "71' · Dep"), self.metinler)
+        mac_izle.degisiklikleri_bildir(b, adsiz, {**adsiz, "dakika": "72'"})
+        self.assertEqual(guncellenen, [], "golcü yokken güncelleme gitmemeli")
+        adli = {**adsiz, "dakika": "73'", "goller": eski["goller"] + [
+            {"takim": "2", "dk": "70'", "oyuncu": "Forvet", "pen": False, "kk": False}]}
+        mac_izle.degisiklikleri_bildir(b, adsiz, adli)
+        mac_izle.degisiklikleri_bildir(b, adli, adli)
+        self.assertEqual(guncellenen, [("⚽ GOL! Ev 2–1 Dep", "70' Forvet · Dep", "m1", "Forvet")], "bir kez güncellenmeli")
+        self.assertEqual([o for o, *_ in self.metinler].count("gol"), 1, "güncelleme yeni gol bildirimi değil")
+
     def test_skor_karti_verisi(self):
         self.calistir(timedelta(hours=5, minutes=30))
         kartlar = dict(reversed([(o, k) for o, k in self.kartlar]))   # her olayın ilk kartı

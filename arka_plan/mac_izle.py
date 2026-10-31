@@ -2,8 +2,8 @@
 
 1. Verileri gerekiyorsa günceller (fikstür, sonuçlar, puan durumu).
 2. ayarlar.json'daki liglerin yakında başlayacak ya da oynanmakta olan maçı
-   varsa maçlar bitene kadar dakikada bir skoru kontrol eder ve her olayı
-   iki takımın FCM konusuna gönderir (bildirim.py). Maç yoksa kapanır; sıradaki
+   varsa maçlar bitene kadar skoru kontrol eder (oynanan maç varken 20 sn'de, yoksa dakikada bir)
+   ve her olayı görür görmez iki takımın FCM konusuna gönderir (bildirim.py); commit/push beklenmez. Maç yoksa kapanır; sıradaki
    maç 4 saat içindeyse kapanmadan onu bekler (zamanlanmış görev seyrek tetikleniyor).
    Sunucu kimin neyi takip ettiğini bilmez; bu yüzden tüm maçlar izlenir.
 3. Maç detaylarını (olaylar, istatistik, kadrolar) veri/detay/ altına yazar (detay.py):
@@ -17,7 +17,8 @@ Ortam değişkenleri:
   FIREBASE_HESAP    : FCM servis hesabı (base64), bkz. bildirim.py
   NTFY_KONU         : isteğe bağlı ntfy konusu; takip.json'daki takımlar için
   UYGULAMA_ADRESI   : ntfy bildirimine tıklayınca açılacak adres (isteğe bağlı)
-  KONTROL_ARALIGI   : kaç saniyede bir kontrol (varsayılan 60)
+  KONTROL_ARALIGI   : maç başlamadan kaç saniyede bir kontrol (varsayılan 60)
+  KONTROL_CANLI     : oynanan maç varken kaç saniyede bir kontrol (varsayılan 20)
 """
 import json
 import os
@@ -41,6 +42,9 @@ BOSTA_BEKLE = timedelta(hours=4)
 HATIRLATMA = timedelta(minutes=15)      # maçtan bu kadar önce hatırlat
 AZAMI_SURE = timedelta(hours=5, minutes=30)   # GitHub sınırı 6 saat
 KONTROL = int(os.environ.get("KONTROL_ARALIGI", "60"))
+# Oynanan maç varken: ESPN golü ~1 dk içinde gösteriyor; 60 sn aralık buna ortalama 30 sn daha ekliyordu.
+# Lig+gün başına bir istek: 20 sn'de saatte 180 istek (canlı detaylar 4 dk'da bir, değişmez).
+KONTROL_CANLI = int(os.environ.get("KONTROL_CANLI", "20"))
 GONDERIM_ARALIGI = timedelta(minutes=4)  # skor değişmese de canlı dakikayı güncelle
 
 BITTI = {"STATUS_FULL_TIME", "STATUS_FINAL", "STATUS_FINAL_AET", "STATUS_FINAL_PEN",
@@ -124,6 +128,13 @@ def son_gol(m, atan, atan_skor):
     return None
 
 
+def kart_ayrintisi(m, atan, atan_skor):
+    """Skor kartının gol alanları; golcü henüz yoksa dakika ESPN saatinden, oyuncu boş."""
+    g = son_gol(m, atan, atan_skor) or {}
+    return {"atan": "ev" if atan is m["ev"] else "dep", "dk": g.get("dk") or m.get("dakika") or "",
+            "oyuncu": g.get("oyuncu", ""), "pen": g.get("pen"), "kk": g.get("kk")}
+
+
 def gol_ayrintisi(m, atan, atan_skor):
     """"67' Oyuncu · Takım" ("(k.k.)" / "(p)" ekli). Gol listesi skorla uyuşmazsa dakika + takım."""
     g = son_gol(m, atan, atan_skor)
@@ -178,11 +189,11 @@ def degisiklikleri_bildir(b, eski, yeni):
         if ev >= eski_ev and dep >= eski_dep:
             atan = yeni["ev"] if ev > eski_ev else yeni["dep"]
             atan_skor = ev if atan is yeni["ev"] else dep
-            g = son_gol(yeni, atan, atan_skor) or {}
-            ayrinti = {"atan": "ev" if atan is yeni["ev"] else "dep", "dk": g.get("dk") or yeni.get("dakika") or "",
-                       "oyuncu": g.get("oyuncu", ""), "pen": g.get("pen"), "kk": g.get("kk")}
-            b.bir_kez(f"{mid}:skor:{ev}-{dep}", yeni, "gol", "gol", f"⚽ GOL! {skor_metni(yeni)}",
-                      gol_ayrintisi(yeni, atan, atan_skor), ("soccer", "tada"), 5, ayrinti=ayrinti)
+            ayrinti = kart_ayrintisi(yeni, atan, atan_skor)
+            # golcü adı beklenmez: ESPN vermediyse "67' · Takım" gider, ad gelince golcuyu_ekle günceller
+            if b.bir_kez(f"{mid}:skor:{ev}-{dep}", yeni, "gol", "gol", f"⚽ GOL! {skor_metni(yeni)}",
+                         gol_ayrintisi(yeni, atan, atan_skor), ("soccer", "tada"), 5, ayrinti=ayrinti)                     and not ayrinti["oyuncu"]:
+                b.gonderilenler.add(f"{mid}:adsiz:{ev}-{dep}:{ayrinti['atan']}")
         else:
             iptal = yeni["ev"] if ev < eski_ev else yeni["dep"]
             dakika = f" · {yeni['dakika']}" if yeni.get("dakika") else ""
@@ -192,12 +203,28 @@ def degisiklikleri_bildir(b, eski, yeni):
             # İptal edilen skor tekrar olursa yeniden bildirilebilsin
             b.gonderilenler.discard(f"{mid}:skor:{eski_ev}-{eski_dep}")
             b.gonderilenler.discard(f"{mid}:iptal:{ev}-{dep}")
+    else:
+        golcuyu_ekle(b, yeni)
 
     if kod == "STATUS_HALFTIME":
         b.bir_kez(f"{mid}:devre", yeni, "mac", "devre", f"Devre arası: {skor_metni(yeni)}", lig, ("hourglass",), 3)
 
     if yeni["durum"] == "post" or kod in BITTI:
         b.bir_kez(f"{mid}:bitti", yeni, "son", "bitti", f"Maç sonu: {skor_metni(yeni)}", lig, ("checkered_flag",))
+
+
+def golcuyu_ekle(b, m):
+    """Son gol bildirimi golcü adı olmadan gittiyse ve ESPN adı artık veriyorsa aynı bildirimi
+    (aynı etiket) golcüyle sessizce günceller. Skor bu arada değiştiyse eski gol güncellenmez."""
+    ev, dep = m["ev_skor"] or 0, m["dep_skor"] or 0
+    for taraf, atan_skor in (("ev", ev), ("dep", dep)):
+        anahtar = f"{m['id']}:adsiz:{ev}-{dep}:{taraf}"
+        if anahtar not in b.gonderilenler or not son_gol(m, m[taraf], atan_skor):
+            continue
+        b.gonderilenler.discard(anahtar)
+        bildirim.guncelle((m["ev"]["id"], m["dep"]["id"]), "gol", f"⚽ GOL! {skor_metni(m)}",
+                          gol_ayrintisi(m, m[taraf], atan_skor), m["id"], "gol",
+                          kart_bilgisi(m, kart_ayrintisi(m, m[taraf], atan_skor)))
 
 
 # ------------------------------------------------------------- izleme
@@ -320,7 +347,9 @@ def izle():
             detay.eksikleri_yaz(list(maclar.values()), azami=10)
             git_gonder("Canlı skor güncellendi")
             son_gonderim = simdi()
-        time.sleep(KONTROL)
+        oynanan = any(son_durum.get(m["id"], m).get("durum") == "in" or zaman_oku(m["tarih"]) <= su_an
+                      for m in aktif)
+        time.sleep(KONTROL_CANLI if oynanan else KONTROL)
 
     if izlenen_var:
         canli_yaz(son_durum, b)
