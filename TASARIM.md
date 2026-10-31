@@ -299,7 +299,10 @@ projenin kendi varlığıdır. Yeniden üretmek için: `pip install numpy soundf
 
 Yukarıdan aşağı kartlar:
 1. **Hesap** — avatar (Google fotoğrafı, yoksa lime zeminde baş harf), ad, e-posta,
-   "Google ile bağlı · takımların eşitleniyor", Çıkış yap. Misafirde "Google ile giriş yap" + kısa açıklama.
+   "Google ile bağlı · takımların eşitleniyor", Çıkış yap. Oturum yoksa "Google ile giriş yap" + kısa açıklama.
+   Giriş yalnız Google ile (1.0.4+): misafir/anonim oturum açılmaz; oturum yokken Profil dışındaki ekranlarda
+   giriş ekranı görünür, çıkış yapınca oraya dönülür. Firestore kuralları yalnız sahibin uid'sine izin verir;
+   bulut kaydı başarısız olursa ekranda kısa uyarı çıkar.
 2. **Bildirimler** (yalnız Android) — 4 anahtar (`role="switch"`), her birinin altında bir satır açıklama:
    Goller / Maç başladı · devre arası / Maç sonucu / Maçtan önce hatırlatma.
    Bildirim izni yoksa üstte izin isteme düğmesi. Altında not: "Bir takımın bildirimlerini tamamen kapatmak için

@@ -47,7 +47,7 @@ const durum = {
   hata: null,
   bildirim: { ...VARSAYILAN_BILDIRIM, ...depoOku(BILDIRIM_DEPO, {}) },
   tema: depoOku(TEMA_DEPO, 'sistem'),  // sistem | acik | koyu
-  bulut: 'baglaniyor',  // baglaniyor | hazir | hata
+  bulut: 'baglaniyor',  // baglaniyor | hazir | girissiz | hata
   islem: false,         // giriş/çıkış/silme sürüyor
   onay: null,           // sayfa içi pencere: 'sil' | 'gizlilik'
   hedefMac: null,       // bildirime dokunulunca açılacak maç
@@ -289,12 +289,23 @@ function ciz() {
   });
   const icerik = $('#icerik');
   const ciziciler = { takimlar: cizTakimlar, maclar: cizMaclar, puan: cizPuan, ekle: cizEkle, profil: cizProfil, mac: cizMacDetay };
-  document.body.classList.toggle('detayda', durum.sekme === 'mac');   // maç detayında alt menü yok
+  // oturum yoksa Profil dışındaki her ekranda giriş ekranı (uygulama yalnız Google hesabıyla çalışır)
+  const cizici = durum.bulut === 'girissiz' && durum.sekme !== 'profil' ? girisEkrani : (ciziciler[durum.sekme] || cizMaclar);
+  document.body.classList.toggle('detayda', cizici === cizMacDetay);   // maç detayında alt menü yok
   icerik.innerHTML = (durum.hata && !['profil', 'mac'].includes(durum.sekme) ? `<div class="uyari">${kacis(durum.hata)}</div>` : '') +
-    (ciziciler[durum.sekme] || cizMaclar)() + onayKutusu();
+    cizici() + onayKutusu();
   hedefeGit();
   puanaGit();
   if (durum.sekme === 'takimlar') suruklemeKur();
+}
+
+function girisEkrani() {
+  const bekle = durum.islem ? 'disabled' : '';
+  return `<div class="kart bos">
+    <svg width="56" height="56" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><path fill="currentColor" d="m12 7 3.8 2.8-1.5 4.4H9.7L8.2 9.8z"/></svg>
+    <h2>Google ile giriş yap</h2><p>Takımların ve bildirim ayarların Google hesabında saklanır, tüm cihazlarında görünür.</p>
+    <button class="dugme google" id="googleBtn" ${bekle}>${GOOGLE_LOGO}Google ile giriş yap</button>
+  </div>`;
 }
 
 function bosEkran(baslik, metin, dugme = true) {
@@ -970,12 +981,19 @@ function takimDegistir(id, lig) {
 }
 
 // ---- Bulut eşitleme
+const izinHatasi = (h) => /permission|izin/i.test(`${h?.code || ''} ${h?.message || ''}`);
+/** Bulut kaydı başarısız: konsola yazılır ve ekranda kısa uyarı gösterilir */
+function kayitHatasi(h) {
+  console.warn('buluta kaydedilemedi', h);
+  tost(izinHatasi(h) ? 'Buluta kaydedilemedi: izin yok' : 'Buluta kaydedilemedi, bağlantını kontrol et', 3500);
+}
+
 let kayitZamanlayici = null;
 function bulutaKaydet() {
   if (durum.bulut !== 'hazir') return;  // bağlanınca esitle() birleştirir
   clearTimeout(kayitZamanlayici);
   kayitZamanlayici = setTimeout(() => {
-    Bulut.takimlariYaz(durum.takip).catch((h) => console.warn('takımlar kaydedilemedi', h));
+    Bulut.takimlariYaz(durum.takip).catch(kayitHatasi);
     Bulut.abonelikleriEsitle(durum.takip, durum.bildirim).catch(() => {});
   }, 800);
 }
@@ -994,19 +1012,25 @@ async function esitle() {
   durum.takip = birlesik;
   depoYaz(DEPO, durum.takip);
   depoYaz(BILDIRIM_DEPO, durum.bildirim);
-  if (degisti) await Bulut.belgeYaz({ takimlar: durum.takip, bildirim: durum.bildirim });
+  if (degisti) {
+    try { await Bulut.belgeYaz({ takimlar: durum.takip, bildirim: durum.bildirim }); } catch (h) { kayitHatasi(h); throw h; }
+  }
   Bulut.abonelikleriEsitle(durum.takip, durum.bildirim).catch(() => {});
   if (eklenen.length) Promise.all(gerekliLigler().filter((k) => !durum.ligVeri[k]).map(ligYukle)).then(() => ciz());
 }
 
 async function bulutBaslat() {
   try {
-    await Bulut.baslat();
-    await esitle();
-    durum.bulut = 'hazir';
-    if (durum.takip.length) izinIste(); else izinKontrol();
+    if (!await Bulut.baslat()) {
+      durum.bulut = 'girissiz';
+    } else {
+      await esitle();
+      durum.bulut = 'hazir';
+      if (durum.takip.length) izinIste(); else izinKontrol();
+    }
   } catch (h) {
     console.warn('bulut', h);
+    if (izinHatasi(h)) tost('Hesaba erişilemedi: izin yok', 3500);
     durum.bulut = 'hata';
   }
   ciz();
@@ -1016,7 +1040,10 @@ async function hesapIslemi(fn) {
   if (durum.islem) return;
   durum.islem = true;
   ciz();
-  try { await fn(); } catch (h) { console.warn(h); tost('İşlem tamamlanamadı, tekrar dene'); }
+  try { await fn(); } catch (h) {
+    console.warn(h);
+    tost(izinHatasi(h) ? 'Hesaba erişilemedi: izin yok' : 'İşlem tamamlanamadı, tekrar dene', 3500);
+  }
   durum.islem = false;
   ciz();
 }
@@ -1031,16 +1058,30 @@ function cihazdakiHesabiTemizle() {
 const googleIleGiris = () => hesapIslemi(async () => {
   const s = await Bulut.googleIleGiris();
   if (s.durum === 'iptal') return;
-  durum.bulut = 'hazir';
-  await esitle();
-  tost(s.durum === 'gecildi' ? 'Hesabına geçildi, takımlar birleştirildi' : 'Google hesabına bağlandı');
+  durum.bulut = 'baglaniyor';
+  try {
+    await esitle();
+    durum.bulut = 'hazir';
+  } catch (h) {
+    durum.bulut = 'hata';
+    throw h;
+  }
+  if (durum.takip.length) izinIste(); else izinKontrol();
+  tost('Google ile giriş yapıldı');
 });
+
+/** Çıkıştan ya da hesap silinince: cihaz temizlenir, giriş ekranına dönülür */
+function oturumKapandi() {
+  cihazdakiHesabiTemizle();
+  durum.bulut = 'girissiz';
+  durum.sekme = 'takimlar';
+}
 
 // Çıkışta takımlar hesapta kalır, bu cihazdan silinir
 const cikisYap = () => hesapIslemi(async () => {
   await Bulut.abonelikleriEsitle([], durum.bildirim).catch(() => {});
   await Bulut.cikis();
-  cihazdakiHesabiTemizle();
+  oturumKapandi();
   tost('Çıkış yapıldı');
 });
 
@@ -1048,7 +1089,7 @@ const hesabiSil = () => hesapIslemi(async () => {
   durum.onay = null;
   await Bulut.abonelikleriEsitle([], durum.bildirim).catch(() => {});
   await Bulut.hesabiSil();
-  cihazdakiHesabiTemizle();
+  oturumKapandi();
   tost('Hesabın ve verilerin silindi');
 });
 
@@ -1058,7 +1099,7 @@ function gorunumDegistir(gorunum) {
   durum.bildirim = { ...durum.bildirim, gorunum };
   depoYaz(BILDIRIM_DEPO, durum.bildirim);
   if (durum.bulut === 'hazir') {
-    Bulut.bildirimAyarlariYaz(durum.bildirim).catch((h) => console.warn(h));
+    Bulut.bildirimAyarlariYaz(durum.bildirim).catch(kayitHatasi);
     Bulut.abonelikleriEsitle(durum.takip, durum.bildirim).catch(() => {});
   }
   tost(gorunum === 'kart' ? 'Bildirimler skor kartı olarak gelecek' : 'Bildirimler sade metin olarak gelecek');
@@ -1070,7 +1111,7 @@ function bildirimDegistir(tur) {
   depoYaz(BILDIRIM_DEPO, durum.bildirim);
   if (durum.bildirim[tur]) izinIste();
   if (durum.bulut === 'hazir') {
-    Bulut.bildirimAyarlariYaz(durum.bildirim).catch((h) => console.warn(h));
+    Bulut.bildirimAyarlariYaz(durum.bildirim).catch(kayitHatasi);
     Bulut.abonelikleriEsitle(durum.takip, durum.bildirim).catch(() => {});
   }
   ciz();
@@ -1142,14 +1183,14 @@ function hesapKarti() {
   let ic;
   if (durum.bulut === 'baglaniyor') {
     ic = '<p class="kart-not">Hesaba bağlanılıyor…</p>';
+  } else if (durum.bulut === 'girissiz') {
+    ic = `<div class="profil"><div class="avatar misafir" aria-hidden="true">${PROFIL_SIMGE}</div>
+        <div><b>Giriş yapılmadı</b><small>Uygulama Google hesabınla çalışır</small></div></div>
+      <p class="kart-not">Google ile giriş yaparsan takımların ve bildirim ayarların hesabına kaydedilir, tüm cihazlarında görünür.</p>
+      <button class="dugme google genis" id="googleBtn" ${bekle}>${GOOGLE_LOGO}Google ile giriş yap</button>`;
   } else if (durum.bulut === 'hata' || !k) {
     ic = `<p class="kart-not">Hesaba bağlanılamadı. Takımların bu cihazda kayıtlı; bağlantı gelince eşitlenir.</p>
       <button class="dugme ikincil genis" id="bulutTekrarBtn">Tekrar dene</button>`;
-  } else if (k.misafir) {
-    ic = `<div class="profil"><div class="avatar misafir" aria-hidden="true">${PROFIL_SIMGE}</div>
-        <div><b>Misafir</b><small>Takımların yalnız bu cihazda</small></div></div>
-      <p class="kart-not">Google ile giriş yaparsan takımların hesabına kaydedilir ve tüm cihazlarında görünür.</p>
-      <button class="dugme google genis" id="googleBtn" ${bekle}>${GOOGLE_LOGO}Google ile giriş yap</button>`;
   } else {
     const foto = k.foto ? `<img class="avatar" src="${kacis(k.foto)}" alt="" referrerpolicy="no-referrer"
         onerror="this.outerHTML=this.dataset.yedek" data-yedek="${kacis(`<div class="avatar">${kacis(basHarfler(k))}</div>`)}">`

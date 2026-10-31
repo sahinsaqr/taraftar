@@ -4,6 +4,7 @@
    - Android (Capacitor): @capacitor-firebase eklentileri (window.Capacitor.Plugins)
    - Web: Firebase JS SDK, gstatic CDN'den ES modülü olarak (derleme aracı yok)
 
+   Giriş yalnız Google ile (misafir/anonim oturum yok; Firestore kuralları yalnız sahibin uid'sine izin verir).
    Firestore: kullanicilar/{uid} = { takimlar: [...], bildirim: {gol, mac, son, hat}, guncelleme }
    takimlar[i] = { id, ad, kisa, logo, lig, renk?, renk2?, zil? }  (zil: false = o takımın bildirimleri kapalı)
    Bildirim konuları (yalnız Android): t{takımID}_{tür}, tür = gol | mac | son | hat;
@@ -43,16 +44,13 @@ function zamanAsimi(soz, ms = ZAMAN_ASIMI) {
 // gelir. Noktasız ı'lar i'ye çevrilmezse aşağıdaki desenler eşleşmez.
 const hataMetni = (h) => `${h?.code || ''} ${h?.message || ''}`.replace(/ı/g, 'i').replace(/İ/g, 'I');
 const iptalMi = (h) => /cancel|popup-closed|user-cancelled/i.test(hataMetni(h));
-const hesapVarMi = (h) => /already-in-use|account-exists|credential-already|already associated with a different user/i.test(hataMetni(h));
 
 function kullaniciBicim(u) {
   if (!u) return null;
-  // Misafir hesap Google'a bağlanınca ad/fotoğraf kullanıcıda boş kalabiliyor
-  // (Android eklentisi); o zaman Google sağlayıcı bilgisinden alınır.
+  // Ad/fotoğraf kullanıcıda boş kalabiliyor (Android eklentisi); o zaman Google sağlayıcı bilgisinden alınır.
   const google = (u.providerData || []).find((p) => p.providerId === 'google.com') || {};
   return {
     uid: u.uid,
-    misafir: !!u.isAnonymous,
     ad: u.displayName || google.displayName || '',
     eposta: u.email || google.email || '',
     foto: u.photoUrl || u.photoURL || google.photoUrl || google.photoURL || '',
@@ -79,7 +77,8 @@ class YerelBulut {
 
   async baslat() {
     let { user } = await zamanAsimi(this.auth.getCurrentUser());
-    if (!user) ({ user } = await zamanAsimi(this.auth.signInAnonymously()));
+    // eski sürümlerden kalan misafir oturumu kapatılır; oturum yoksa uygulama Google girişi ister
+    if (user?.isAnonymous) { await this.auth.signOut().catch(() => {}); user = null; }
     this.kullanici = kullaniciBicim(user);
     if (this.mesaj) {
       // Kanal ayarları (önem, ses) kanal ilk oluşturulunca sabitlenir; değiştirmek gerekirse yeni kanal kimliği ver
@@ -91,18 +90,9 @@ class YerelBulut {
 
   async googleIleGiris() {
     try {
-      const { user } = await this.auth.linkWithGoogle();
-      this.kullanici = kullaniciBicim(user);
-      return { durum: 'baglandi', kullanici: this.kullanici };
-    } catch (h) {
-      if (iptalMi(h)) return { durum: 'iptal' };
-      if (!hesapVarMi(h)) throw h;
-    }
-    // Bu Google hesabı daha önce kullanılmış: o hesaba geç
-    try {
       const { user } = await this.auth.signInWithGoogle();
       this.kullanici = kullaniciBicim(user);
-      return { durum: 'gecildi', kullanici: this.kullanici };
+      return { durum: 'girildi', kullanici: this.kullanici };
     } catch (h) {
       if (iptalMi(h)) return { durum: 'iptal' };
       throw h;
@@ -111,9 +101,7 @@ class YerelBulut {
 
   async cikis() {
     await this.auth.signOut();
-    const { user } = await zamanAsimi(this.auth.signInAnonymously());
-    this.kullanici = kullaniciBicim(user);
-    return this.kullanici;
+    this.kullanici = null;
   }
 
   async hesabiSil() {
@@ -127,14 +115,8 @@ class YerelBulut {
       await this.auth.signInWithGoogle();
       await zamanAsimi(this.auth.deleteUser());
     }
-    return this.cikisSonrasi();
-  }
-
-  async cikisSonrasi() {
     await this.auth.signOut().catch(() => {});
-    const { user } = await zamanAsimi(this.auth.signInAnonymously());
-    this.kullanici = kullaniciBicim(user);
-    return this.kullanici;
+    this.kullanici = null;
   }
 
   async belgeOku() {
@@ -208,36 +190,27 @@ class WebBulut {
     this.auth = auth.getAuth(uygulama);
     this.db = fs.getFirestore(uygulama);
     await zamanAsimi(this.auth.authStateReady());
-    if (!this.auth.currentUser) await zamanAsimi(auth.signInAnonymously(this.auth));
+    // eski sürümlerden kalan misafir oturumu kapatılır; oturum yoksa uygulama Google girişi ister
+    if (this.auth.currentUser?.isAnonymous) await auth.signOut(this.auth).catch(() => {});
     this.kullanici = kullaniciBicim(this.auth.currentUser);
     return this.kullanici;
   }
 
   async googleIleGiris() {
     const { a } = this;
-    const saglayici = new a.GoogleAuthProvider();
     try {
-      const { user } = await a.linkWithPopup(this.auth.currentUser, saglayici);
-      // Bağlamadan hemen sonra ad/fotoğraf boş gelebilir; sağlayıcı bilgisinden tamamla
-      await user.reload().catch(() => {});
-      this.kullanici = kullaniciBicim(this.auth.currentUser);
-      return { durum: 'baglandi', kullanici: this.kullanici };
+      const { user } = await a.signInWithPopup(this.auth, new a.GoogleAuthProvider());
+      this.kullanici = kullaniciBicim(user);
+      return { durum: 'girildi', kullanici: this.kullanici };
     } catch (h) {
       if (iptalMi(h)) return { durum: 'iptal' };
-      if (!hesapVarMi(h)) throw h;
-      // Bu Google hesabı daha önce kullanılmış: aynı kimlikle o hesaba geç
-      const kimlik = a.GoogleAuthProvider.credentialFromError(h);
-      const { user } = kimlik
-        ? await a.signInWithCredential(this.auth, kimlik)
-        : await a.signInWithPopup(this.auth, saglayici);
-      this.kullanici = kullaniciBicim(user);
-      return { durum: 'gecildi', kullanici: this.kullanici };
+      throw h;
     }
   }
 
   async cikis() {
     await this.a.signOut(this.auth);
-    return this.cikisSonrasi();
+    this.kullanici = null;
   }
 
   async hesabiSil() {
@@ -251,13 +224,8 @@ class WebBulut {
       await a.reauthenticateWithPopup(u, new a.GoogleAuthProvider());
       await a.deleteUser(u);
     }
-    return this.cikisSonrasi();
-  }
-
-  async cikisSonrasi() {
-    await zamanAsimi(this.a.signInAnonymously(this.auth));
-    this.kullanici = kullaniciBicim(this.auth.currentUser);
-    return this.kullanici;
+    await a.signOut(this.auth).catch(() => {});
+    this.kullanici = null;
   }
 
   async belgeOku() {
@@ -292,17 +260,16 @@ const ic = olustur();
 export const Bulut = {
   /** Uygulama Android'de mi çalışıyor */
   get yerel() { return ic.yerel; },
-  /** { uid, misafir, ad, eposta, foto } ya da null (henüz bağlanmadıysa) */
+  /** { uid, ad, eposta, foto } ya da null (oturum yok ya da henüz bağlanmadı) */
   get kullanici() { return ic.kullanici; },
 
-  /** Oturum yoksa misafir oturumu açar; kullanıcı nesnesini döner */
+  /** Var olan Google oturumunu yükler; oturum yoksa null döner (misafir oturumu açılmaz) */
   baslat: () => ic.baslat(),
-  /** Misafiri Google'a bağlar; hesap zaten varsa ona geçer.
-      -> { durum: 'baglandi' | 'gecildi' | 'iptal', kullanici } */
+  /** Google ile giriş -> { durum: 'girildi' | 'iptal', kullanici } */
   googleIleGiris: () => ic.googleIleGiris(),
-  /** Çıkış yapar ve yeni misafir oturumu açar */
+  /** Çıkış yapar; kullanıcı null olur */
   cikis: () => ic.cikis(),
-  /** Firestore belgesini ve Auth kullanıcısını siler, yeni misafir oturumu açar */
+  /** Firestore belgesini ve Auth kullanıcısını siler, oturumu kapatır */
   hesabiSil: () => ic.hesabiSil(),
 
   takimlariOku: async () => (await ic.belgeOku()).takimlar,
