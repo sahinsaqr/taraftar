@@ -1,6 +1,7 @@
 """Dosya yolları, JSON okuma/yazma ve git işlemleri."""
 import json
 import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +48,20 @@ def json_yaz(yol, veri):
 
 def ayarlar():
     return json_oku(KOK / "ayarlar.json", {"ligler": []})
+
+
+def kisaltma(takim_id, varsayilan="", kaynak="espn"):
+    """Takımın kısaltması (kisaltmalar.json, uygulamayla ortak); tabloda yoksa sağlayıcınınki."""
+    if not hasattr(kisaltma, "tablo"):
+        veri = json_oku(KOK / "kisaltmalar.json", {}) or {}
+        kisaltma.tablo = {(k, str(t[k])): t["kisa"] for t in veri.get("takimlar", []) for k in t
+                          if k not in ("kisa", "ad")}
+    return kisaltma.tablo.get((kaynak, str(takim_id)), varsayilan)
+
+
+def dakika(metin):
+    """Uzatma dakikası "90+4'" biçiminde (ESPN "90'+4'" verir); diğerleri olduğu gibi."""
+    return re.sub(r"(\d+)'\s*\+\s*(\d+)'?", r"\g<1>+\g<2>'", metin or "")
 
 
 def takip_edilenler():

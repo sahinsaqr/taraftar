@@ -1,0 +1,10 @@
+{
+  "aciklama": "Takım kısaltmaları: sunucu (arka_plan/ortak.py → kisaltma) ve uygulama (app.js) ortak kullanır. Burada olmayan takım veri sağlayıcısının kısaltmasıyla kalır. Kimlikler sağlayıcıya göre: espn, api_football.",
+  "takimlar": [
+    {"kisa": "GS",   "ad": "Galatasaray", "espn": "432",  "api_football": "645"},
+    {"kisa": "FB",   "ad": "Fenerbahçe",  "espn": "436",  "api_football": "611"},
+    {"kisa": "BJK",  "ad": "Beşiktaş",    "espn": "1895", "api_football": "549"},
+    {"kisa": "TS",   "ad": "Trabzonspor", "espn": "997",  "api_football": "998"},
+    {"kisa": "İBFK", "ad": "Başakşehir",  "espn": "7914", "api_football": "564"}
+  ]
+}

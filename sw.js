@@ -1,6 +1,6 @@
 // Uygulama dosyalarını önbelleğe alır; internet yokken son veriler gösterilir.
-const SURUM = 'taraftar-v22';
-const KABUK = ['./', 'index.html', 'style.css', 'app.js', 'bulut.js', 'firebase-ayar.js', 'manifest.webmanifest',
+const SURUM = 'taraftar-v23';
+const KABUK = ['./', 'index.html', 'style.css', 'app.js', 'bulut.js', 'firebase-ayar.js', 'manifest.webmanifest', 'kisaltmalar.json',
   'ikonlar/ikon.svg', 'ikonlar/favicon-64.png', 'ikonlar/ikon-192.png', 'ikonlar/apple-touch-icon.png', 'kutuphane/Sortable.min.js', 'package.json',
   ...['barlow-latin', 'barlow-latin-ext'].flatMap((a) => [400, 500, 600, 700].map((k) => `yazitipleri/${a}-${k}-normal.woff2`)),
   ...['barlow-condensed-latin', 'barlow-condensed-latin-ext'].flatMap((a) => [600, 700].map((k) => `yazitipleri/${a}-${k}-normal.woff2`))];

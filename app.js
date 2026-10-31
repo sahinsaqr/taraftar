@@ -88,6 +88,17 @@ const TURKCE_METIN = {
 };
 const turkceMetin = (s) => TURKCE_METIN[s] ?? s;
 
+// Uzatma dakikası "90+4'" (ESPN "90'+4'" verir; sunucu çevirir, eski veriler için burada da)
+const dkBicim = (s) => String(s || '').replace(/(\d+)'\s*\+\s*(\d+)'?/g, "$1+$2'");
+
+// Takım kısaltmaları: kisaltmalar.json (sunucuyla ortak; arka_plan/ortak.py → kisaltma). Tabloda yoksa veridekini.
+const KISALTMA = new Map();
+const kisaAd = (t) => KISALTMA.get(String(t?.id)) || t?.kisa || '';
+fetch('kisaltmalar.json').then((r) => r.json()).then((k) => {
+  for (const t of k.takimlar || []) if (t.espn) KISALTMA.set(String(t.espn), t.kisa);
+  if (durum.sonYukleme) ciz();
+}).catch(() => {});
+
 async function jsonGetir(yol) {
   const r = await fetch(`${VERI_KOK}${yol}?t=${Date.now()}`, { cache: 'no-store' });
   if (!r.ok) throw new Error(`${yol}: ${r.status}`);
@@ -157,9 +168,11 @@ function ligTakimi(id) {
     zeminle 4.5:1 veriyorsa odur, yoksa beyaz ya da lacivertten okunaklı olanı. */
 function logoYedek(takim, boyut, px) {
   const lt = ligTakimi(takim.id) || durum.takip.find((t) => t.id === takim.id) || {};
-  const bas = kacis((takim.kisa || lt.kisa || takim.ad || '?').slice(0, 3).toLocaleUpperCase('tr'));
+  const kisa = kisaAd(takim) || kisaAd(lt);
+  const bas = kacis((kisa ? kisa.slice(0, 4) : (takim.ad || '?').slice(0, 3)).toLocaleUpperCase('tr'));
   const renk = takim.renk || lt.renk;
   let stil = `width:${px}px;height:${px}px`;
+  if (bas.length > 3) stil += `;font-size:${Math.max(7, Math.round(px * 0.26))}px`;   // İBFK
   if (renkMi(renk)) {
     const r2 = takim.renk2 || lt.renk2;
     const yazi = renkMi(r2) && kontrast(renk, r2) >= 4.5 ? r2
@@ -240,7 +253,7 @@ function macDurumu(m) {
   if (ERTELENDI.has(m.durum_kodu)) return { tip: 'ert', yazi: 'ERT', alt: 'ertelendi' };
   if (m.durum === 'in') {
     if (m.durum_kodu === 'STATUS_HALFTIME') return { tip: 'canli', yazi: 'DA', alt: 'devre' };
-    return { tip: 'canli', yazi: m.dakika || 'CANLI', alt: 'canlı' };
+    return { tip: 'canli', yazi: dkBicim(m.dakika) || 'CANLI', alt: 'canlı' };
   }
   if (m.durum === 'post') return { tip: 'bitti', yazi: 'MS', alt: '' };
   // başlama saati geçti ama veri güncellenmemiş olabilir
@@ -504,10 +517,10 @@ function eskiZaman(iso) {
 const ligSatiri = (m) => ligAdi(m.lig);
 
 // Canlı maç: dakika yazısı ve ilerleme (90 dakikaya göre; uzatmalarda dolu)
-const canliDakika = (m) => (m.durum_kodu === 'STATUS_HALFTIME' ? 'DA' : m.dakika || '');
+const canliDakika = (m) => (m.durum_kodu === 'STATUS_HALFTIME' ? 'DA' : dkBicim(m.dakika));
 function canliYuzde(m) {
   if (m.durum_kodu === 'STATUS_HALFTIME') return 50;
-  const dk = String(m.dakika || '').match(/\d+/g)?.reduce((a, b) => a + Number(b), 0) || 0;   // 45'+2' → 47
+  const dk = String(m.dakika || '').match(/\d+/g)?.reduce((a, b) => a + Number(b), 0) || 0;   // 45+2' → 47
   return Math.min(100, Math.round((dk / 90) * 100));
 }
 
@@ -737,7 +750,7 @@ function skorAlani(m) {
   } else {
     orta = `<div class="sa-skor" aria-label="Skor ${m.ev_skor ?? 0} - ${m.dep_skor ?? 0}">${m.ev_skor ?? 0}<span aria-hidden="true">-</span>${m.dep_skor ?? 0}</div>`;
     if (m.durum === 'in') {
-      durumSatiri = `<span class="canli-rozet"><span class="nokta" aria-hidden="true"></span>${m.durum_kodu === 'STATUS_HALFTIME' ? 'DEVRE ARASI' : kacis(m.dakika || 'CANLI')}</span>`;
+      durumSatiri = `<span class="canli-rozet"><span class="nokta" aria-hidden="true"></span>${m.durum_kodu === 'STATUS_HALFTIME' ? 'DEVRE ARASI' : kacis(dkBicim(m.dakika) || 'CANLI')}</span>`;
     } else {
       const ek = m.durum_kodu === 'STATUS_FINAL_PEN' && m.ev_penalti != null ? ` · Penaltılar ${m.ev_penalti}-${m.dep_penalti}`
         : m.durum_kodu === 'STATUS_FINAL_PEN' ? ' · Penaltılar sonrası'
@@ -773,7 +786,7 @@ function cizOzet(v) {
     const ic = `<div class="olay-ic">${olayIcerik(o)}</div>`;
     return `<li class="olay tur-${o.tur}">
       <div class="olay-taraf ev">${o.taraf === 'ev' ? ic : ''}</div>
-      <div class="olay-dk${gol ? ' gol' : ''}${o.tur === 'degisiklik' ? ' kucuk' : ''}${o.dk.length > 4 ? ' uzun' : ''}">${kacis(o.dk)}</div>
+      <div class="olay-dk${gol ? ' gol' : ''}${o.tur === 'degisiklik' ? ' kucuk' : ''}${o.dk.length > 4 ? ' uzun' : ''}">${kacis(dkBicim(o.dk))}</div>
       <div class="olay-taraf dep">${o.taraf === 'dep' ? ic : ''}</div>
     </li>`;
   }).join('');
@@ -806,7 +819,7 @@ function cizKadro(v, m) {
     yedek: [...v.kadro[secili].yedek].sort((a, b) => !!b.girdi - !!a.girdi),
   };
   const oyuncu = (o) => `<li class="oyuncu"><span class="forma">${kacis(o.no)}</span><span class="oy-ad">${kacis(o.ad)}${o.cikti ? ' <span class="oy-not" aria-label="oyundan çıktı">↓</span>' : ''}${o.girdi ? ' <span class="oy-not giren" aria-label="oyuna girdi">↑</span>' : ''}</span><span class="oy-poz" title="${kacis(MEVKI_ADLARI[o.poz] || '')}">${kacis(o.poz)}</span></li>`;
-  return `<div class="dizilisler">${['ev', 'dep'].map((t) => `<div class="dizilis">${logoHtml(m[t])}<span>${kacis(m[t].kisa || m[t].ad)}</span><b>${kacis(v.kadro[t]?.dizilis || '—')}</b></div>`).join('')}</div>
+  return `<div class="dizilisler">${['ev', 'dep'].map((t) => `<div class="dizilis">${logoHtml(m[t])}<span>${kacis(kisaAd(m[t]) || m[t].ad)}</span><b>${kacis(v.kadro[t]?.dizilis || '—')}</b></div>`).join('')}</div>
     ${taraflar.length > 1 ? `<div class="bolmeli uc" role="tablist" aria-label="Takım" style="grid-template-columns:1fr 1fr">${taraflar.map((t) =>
       `<button role="tab" data-kadrotaraf="${t}" class="${t === secili ? 'aktif' : ''}" aria-selected="${t === secili}">${kacis(m[t].ad)}</button>`).join('')}</div>` : ''}
     <h2 class="bolum-baslik">İlk 11</h2>
@@ -943,7 +956,7 @@ function takimDegistir(id, lig) {
     if (!t) return;
     if (durum.takip.length >= AZAMI_TAKIM) { tost(`En fazla ${AZAMI_TAKIM} takım takip edebilirsin`); return; }
     if (!durum.takip.length) izinIste();
-    durum.takip.push({ id: t.id, ad: t.ad, kisa: t.kisa, logo: t.logo, lig, ...(t.renk && { renk: t.renk, renk2: t.renk2 || '' }) });
+    durum.takip.push({ id: t.id, ad: t.ad, kisa: kisaAd(t), logo: t.logo, lig, ...(t.renk && { renk: t.renk, renk2: t.renk2 || '' }) });
     tost(`${t.ad} eklendi`);
     // bu takımın liglerini yükle
     Promise.all(gerekliLigler().filter((k) => !durum.ligVeri[k]).map(ligYukle)).then(() => ciz());

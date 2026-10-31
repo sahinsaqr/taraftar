@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Skor kartı, genişletilmiş: solda ev (logo 40dp + ad), ortada büyük skor, sağda deplasman;
-     golde oyuncu satırı golü atan takımın altında, diğer olaylarda ortada durum (BildirimServisi.java).
-     Sütunlar üstten hizalı: golcü satırı ek satırdır, logoları ve adları kaydırmaz. -->
+<!-- Skor kartı, genişletilmiş: solda ev (logo 40dp + ad), ortada büyük skor, sağda deplasman (sütunlar üstten
+     hizalı); golde altta kart genişliğinde golcü satırı, golü atan tarafa hizalı (ev solda, deplasman sağda);
+     diğer olaylarda skorun altında durum yazısı (BildirimServisi.java). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -24,15 +24,6 @@
             <TextView android:id="@+id/ev_ad" style="@style/TextAppearance.Compat.Notification.Title"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_marginTop="4dp" android:gravity="center" android:maxLines="2" android:textSize="14sp" />
-            <!-- golcü satırı: ad sığmazsa "…" ile kısalır (ağırlık 1 → önce o daralır), (p)/(k.k.) hep görünür -->
-            <LinearLayout android:id="@+id/ev_alt" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:visibility="gone">
-                <TextView android:id="@+id/ev_alt_ad" style="@style/TextAppearance.Compat.Notification.Line2"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:maxLines="1" android:singleLine="true" android:ellipsize="end" />
-                <TextView android:id="@+id/ev_alt_ek" style="@style/TextAppearance.Compat.Notification.Line2"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
-            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
@@ -53,15 +44,28 @@
             <TextView android:id="@+id/dep_ad" style="@style/TextAppearance.Compat.Notification.Title"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_marginTop="4dp" android:gravity="center" android:maxLines="2" android:textSize="14sp" />
-            <!-- golcü satırı: ad sığmazsa "…" ile kısalır (ağırlık 1 → önce o daralır), (p)/(k.k.) hep görünür -->
-            <LinearLayout android:id="@+id/dep_alt" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:orientation="horizontal" android:visibility="gone">
-                <TextView android:id="@+id/dep_alt_ad" style="@style/TextAppearance.Compat.Notification.Line2"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1"
-                    android:maxLines="1" android:singleLine="true" android:ellipsize="end" />
-                <TextView android:id="@+id/dep_alt_ek" style="@style/TextAppearance.Compat.Notification.Line2"
-                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
-            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
+
+    <!-- golcü satırı: "⚽ 90+4' Frankowski" + " (p)"; ad sığmazsa "…" ile kısalır (ağırlık 1 → önce o daralır),
+         (p)/(k.k.) hep görünür. Biri görünür: ev_alt solda, dep_alt sağda. -->
+    <FrameLayout android:id="@+id/golcu_satiri" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:visibility="gone">
+        <LinearLayout android:id="@+id/ev_alt" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="start" android:orientation="horizontal" android:visibility="gone">
+            <TextView android:id="@+id/ev_alt_ad" style="@style/TextAppearance.Compat.Notification.Line2"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1"
+                android:maxLines="1" android:singleLine="true" android:ellipsize="end" />
+            <TextView android:id="@+id/ev_alt_ek" style="@style/TextAppearance.Compat.Notification.Line2"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/dep_alt" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_gravity="end" android:orientation="horizontal" android:visibility="gone">
+            <TextView android:id="@+id/dep_alt_ad" style="@style/TextAppearance.Compat.Notification.Line2"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="1"
+                android:maxLines="1" android:singleLine="true" android:ellipsize="end" />
+            <TextView android:id="@+id/dep_alt_ek" style="@style/TextAppearance.Compat.Notification.Line2"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" />
+        </LinearLayout>
+    </FrameLayout>
 </LinearLayout>

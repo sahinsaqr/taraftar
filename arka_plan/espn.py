@@ -8,6 +8,8 @@ import urllib.error
 import urllib.request
 from datetime import date, timedelta
 
+from ortak import dakika, kisaltma
+
 SITE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 STANDINGS = "https://site.api.espn.com/apis/v2/sports/soccer"
 
@@ -105,7 +107,7 @@ def _takim(c):
     return {
         "id": str(t.get("id", "")),
         "ad": turkce(t.get("displayName") or t.get("name") or ""),
-        "kisa": t.get("abbreviation", ""),
+        "kisa": kisaltma(t.get("id", ""), t.get("abbreviation", "")),
         "logo": _logo(t),
         "renk": _renk(t.get("color")),
         "renk2": _renk(t.get("alternateColor")),
@@ -120,7 +122,7 @@ def _goller(comp):
             continue
         oyuncular = d.get("athletesInvolved") or []
         goller.append({
-            "dk": (d.get("clock") or {}).get("displayValue", ""),
+            "dk": dakika((d.get("clock") or {}).get("displayValue", "")),
             "oyuncu": oyuncular[0].get("displayName", "") if oyuncular else "",
             "takim": str((d.get("team") or {}).get("id", "")),
             "kk": bool(d.get("ownGoal")),
@@ -150,7 +152,7 @@ def mac_sadele(ev, lig_kodu):
         "tarih": ev.get("date") or comp.get("date"),
         "durum": asama,
         "durum_kodu": tip.get("name", ""),
-        "dakika": durum.get("displayClock", "") if asama == "in" else "",
+        "dakika": dakika(durum.get("displayClock", "")) if asama == "in" else "",
         "ev": _takim(ev_sahibi),
         "dep": _takim(deplasman),
         "ev_skor": _skor(ev_sahibi) if oynandi else None,
@@ -292,7 +294,7 @@ def lig_takimlari(lig_kodu):
                 takimlar.append({
                     "id": str(t.get("id", "")),
                     "ad": turkce(t.get("displayName") or t.get("name") or ""),
-                    "kisa": t.get("abbreviation", ""),
+                    "kisa": kisaltma(t.get("id", ""), t.get("abbreviation", "")),
                     "logo": _logo(t),
                     "renk": _renk(t.get("color")),
                     "renk2": _renk(t.get("alternateColor")),
@@ -338,7 +340,7 @@ def _olay(e, ev_id, mac_bitti_ek):
     takim = str((e.get("team") or {}).get("id") or "")
     taraf = "ev" if takim == ev_id else ("dep" if takim else "")
     oyuncular = [(p.get("athlete") or {}).get("displayName", "") for p in e.get("participants") or []]
-    dk = (e.get("clock") or {}).get("displayValue", "")
+    dk = dakika((e.get("clock") or {}).get("displayValue", ""))
     olay = {"dk": dk, "taraf": taraf}
     if tip == "halftime":
         return {"dk": dk, "tur": "ayrac", "metin": "Devre arası"}
@@ -420,7 +422,7 @@ def detay_sadele(veri, lig_kodu):
         "tarih": comp.get("date", ""),
         "durum": asama,
         "durum_kodu": kod,
-        "dakika": durum.get("displayClock", "") if asama == "in" else "",
+        "dakika": dakika(durum.get("displayClock", "")) if asama == "in" else "",
         "ev": _takim(ev),
         "dep": _takim(dep),
         "ev_skor": _skor(ev) if oynandi else None,

@@ -80,7 +80,8 @@ public class BildirimServisi extends MessagingService {
 
     private static String al(Map<String, String> v, String anahtar) {
         String d = v.get(anahtar);
-        return d == null ? "" : d;
+        if (d == null) return "";
+        return "dk".equals(anahtar) ? d.replaceAll("(\\d+)'\\s*\\+\\s*(\\d+)'?", "$1+$2'") : d;   // 90'+4' → 90+4'
     }
 
     /** Sunucunun gönderim anından varışa geçen süre (ölçüm için: adb logcat -s Taraftar.Kart). */
@@ -175,17 +176,17 @@ public class BildirimServisi extends MessagingService {
         buyuk.setTextViewText(R.id.dep_ad, al(v, "dep_ad"));
         buyuk.setTextViewText(R.id.skor, skorYazi);
         buyuk.setTextViewText(R.id.lig, al(v, "lig"));
-        // golde oyuncu satırı golü atan takımın altında (karşı tarafta boş satır: sütunlar eşit yükseklikte);
-        // diğer olaylarda ortada durum yazısı
-        String[] oyuncu = golSatiri(v);
+        // golde altta kart genişliğinde golcü satırı, golü atan tarafa hizalı; diğer olaylarda ortada durum yazısı
         boolean golSatiriVar = ("gol".equals(olay) || "iptal".equals(olay)) && !atan.isEmpty();
-        int karsi = golSatiriVar ? View.INVISIBLE : View.GONE;
-        buyuk.setTextViewText(R.id.ev_alt_ad, golSatiriVar && "ev".equals(atan) ? oyuncu[0] : " ");
-        buyuk.setTextViewText(R.id.ev_alt_ek, golSatiriVar && "ev".equals(atan) ? oyuncu[1] : "");
-        buyuk.setTextViewText(R.id.dep_alt_ad, golSatiriVar && "dep".equals(atan) ? oyuncu[0] : " ");
-        buyuk.setTextViewText(R.id.dep_alt_ek, golSatiriVar && "dep".equals(atan) ? oyuncu[1] : "");
-        buyuk.setViewVisibility(R.id.ev_alt, golSatiriVar && "ev".equals(atan) ? View.VISIBLE : karsi);
-        buyuk.setViewVisibility(R.id.dep_alt, golSatiriVar && "dep".equals(atan) ? View.VISIBLE : karsi);
+        buyuk.setViewVisibility(R.id.golcu_satiri, golSatiriVar ? View.VISIBLE : View.GONE);
+        if (golSatiriVar) {
+            String[] oyuncu = golSatiri(v);
+            boolean ev = "ev".equals(atan);
+            buyuk.setTextViewText(ev ? R.id.ev_alt_ad : R.id.dep_alt_ad, oyuncu[0]);
+            buyuk.setTextViewText(ev ? R.id.ev_alt_ek : R.id.dep_alt_ek, oyuncu[1]);
+            buyuk.setViewVisibility(R.id.ev_alt, ev ? View.VISIBLE : View.GONE);
+            buyuk.setViewVisibility(R.id.dep_alt, ev ? View.GONE : View.VISIBLE);
+        }
         String durum = durumYazisi(olay);
         buyuk.setTextViewText(R.id.durum, durum);
         buyuk.setViewVisibility(R.id.durum, durum.isEmpty() ? View.GONE : View.VISIBLE);
@@ -233,7 +234,7 @@ public class BildirimServisi extends MessagingService {
         }
     }
 
-    /** Golcü satırı: { "⚽ 61' Osimhen", " (p)" }; işaret ayrı tutulur ki ad kısalınca kaybolmasın. */
+    /** Golcü satırı: { "⚽ 90+4' Frankowski", " (p)" }; işaret ayrı tutulur ki ad kısalınca kaybolmasın. */
     private static String[] golSatiri(Map<String, String> v) {
         if ("iptal".equals(al(v, "olay"))) return new String[] { "❌ Gol iptal " + al(v, "dk"), "" };
         String ek = "1".equals(al(v, "kk")) ? " (k.k.)" : "1".equals(al(v, "pen")) ? " (p)" : "";
@@ -354,7 +355,8 @@ public class BildirimServisi extends MessagingService {
         p.setTextAlign(Paint.Align.CENTER);
         p.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         p.setTextSize(px * 0.34f);
-        String yazi = kisa.length() > 3 ? kisa.substring(0, 3) : kisa;
+        String yazi = kisa.length() > 4 ? kisa.substring(0, 4) : kisa;   // İBFK
+        if (yazi.length() > 3) p.setTextSize(px * 0.27f);
         c.drawText(yazi, px / 2f, px / 2f - (p.descent() + p.ascent()) / 2, p);
         return b;
     }

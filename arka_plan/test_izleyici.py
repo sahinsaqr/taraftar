@@ -180,6 +180,12 @@ class IzleyiciTesti(unittest.TestCase):
         self.assertTrue(all(isinstance(v, str) for v in veri.values()), "FCM veri değerleri metin olmalı")
         self.assertEqual((veri["kart"], veri["kanal"]), ("1", "goller"))
 
+    def test_dakika_ve_kisaltma(self):
+        from ortak import dakika, kisaltma
+        self.assertEqual([dakika(x) for x in ("90'+4'", "45'+2'", "67'", "90+4'", "")], ["90+4'", "45+2'", "67'", "90+4'", ""])
+        self.assertEqual([kisaltma(i) for i in ("432", "436", "1895", "997", "7914")], ["GS", "FB", "BJK", "TS", "İBFK"])
+        self.assertEqual(kisaltma("999", "XYZ"), "XYZ", "tabloda olmayan takım sağlayıcının kısaltmasıyla kalır")
+
     def test_her_tur_kendi_kanalina(self):
         self.assertEqual(bildirim.KANAL, {"gol": "goller", "mac": "mac_durumu", "son": "mac_sonucu", "hat": "hatirlatma_sesli"})
 
