@@ -3,4 +3,9 @@
     <color name="bildirim_rengi">#C8F04A</color>
     <!-- skor kartında son golü atan tarafın skoru; açık bildirim zemininde lime okunmaz -->
     <color name="kart_vurgu">#3F6B00</color>
+    <!-- skor kartı sağ iç boşluğu: Android 12+ özel alan soldan ikon sütunu kadar içeriden başlar;
+         kart ortalı görünsün diye sağa aynı fark kadar boşluk (values-v31). Önceki sürümlerde gerek yok. -->
+    <dimen name="kart_sag_bosluk">0dp</dimen>
+    <!-- daraltılmış skor kartında logo-skor-logo grubunu kart ortasına almak için sol boşluk (values-v31) -->
+    <dimen name="kart_kucuk_sol_bosluk">0dp</dimen>
 </resources>

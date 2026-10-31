@@ -175,13 +175,17 @@ public class BildirimServisi extends MessagingService {
         buyuk.setTextViewText(R.id.dep_ad, al(v, "dep_ad"));
         buyuk.setTextViewText(R.id.skor, skorYazi);
         buyuk.setTextViewText(R.id.lig, al(v, "lig"));
-        // golde oyuncu satırı golü atan takımın altında; diğer olaylarda ortada durum yazısı
-        String oyuncu = golSatiri(v);
+        // golde oyuncu satırı golü atan takımın altında (karşı tarafta boş satır: sütunlar eşit yükseklikte);
+        // diğer olaylarda ortada durum yazısı
+        String[] oyuncu = golSatiri(v);
         boolean golSatiriVar = ("gol".equals(olay) || "iptal".equals(olay)) && !atan.isEmpty();
-        buyuk.setTextViewText(R.id.ev_alt, golSatiriVar && "ev".equals(atan) ? oyuncu : "");
-        buyuk.setTextViewText(R.id.dep_alt, golSatiriVar && "dep".equals(atan) ? oyuncu : "");
-        buyuk.setViewVisibility(R.id.ev_alt, golSatiriVar && "ev".equals(atan) ? View.VISIBLE : View.GONE);
-        buyuk.setViewVisibility(R.id.dep_alt, golSatiriVar && "dep".equals(atan) ? View.VISIBLE : View.GONE);
+        int karsi = golSatiriVar ? View.INVISIBLE : View.GONE;
+        buyuk.setTextViewText(R.id.ev_alt_ad, golSatiriVar && "ev".equals(atan) ? oyuncu[0] : " ");
+        buyuk.setTextViewText(R.id.ev_alt_ek, golSatiriVar && "ev".equals(atan) ? oyuncu[1] : "");
+        buyuk.setTextViewText(R.id.dep_alt_ad, golSatiriVar && "dep".equals(atan) ? oyuncu[0] : " ");
+        buyuk.setTextViewText(R.id.dep_alt_ek, golSatiriVar && "dep".equals(atan) ? oyuncu[1] : "");
+        buyuk.setViewVisibility(R.id.ev_alt, golSatiriVar && "ev".equals(atan) ? View.VISIBLE : karsi);
+        buyuk.setViewVisibility(R.id.dep_alt, golSatiriVar && "dep".equals(atan) ? View.VISIBLE : karsi);
         String durum = durumYazisi(olay);
         buyuk.setTextViewText(R.id.durum, durum);
         buyuk.setViewVisibility(R.id.durum, durum.isEmpty() ? View.GONE : View.VISIBLE);
@@ -206,10 +210,11 @@ public class BildirimServisi extends MessagingService {
         NotificationManagerCompat.from(this).notify(mac, 0, b.build());   // etiket = maç id: aynı maçın yenisi öncekinin yerine
     }
 
+    /** Daraltılmış kartın sağındaki kısa olay; dar alan (90'+4' sığsın): golde yalnız dakika, atan taraf skor renginde. */
     private static String kisaOlay(String olay, Map<String, String> v) {
         switch (olay) {
-            case "gol": return "⚽ " + al(v, "dk");
-            case "iptal": return "Gol iptal";
+            case "gol": return al(v, "dk");
+            case "iptal": return "İptal";
             case "basladi": return "Başladı";
             case "devre": return "Devre";
             case "bitti": return "Bitti";
@@ -228,10 +233,30 @@ public class BildirimServisi extends MessagingService {
         }
     }
 
-    private static String golSatiri(Map<String, String> v) {
-        if ("iptal".equals(al(v, "olay"))) return "❌ Gol iptal " + al(v, "dk");
+    /** Golcü satırı: { "⚽ 61' Osimhen", " (p)" }; işaret ayrı tutulur ki ad kısalınca kaybolmasın. */
+    private static String[] golSatiri(Map<String, String> v) {
+        if ("iptal".equals(al(v, "olay"))) return new String[] { "❌ Gol iptal " + al(v, "dk"), "" };
         String ek = "1".equals(al(v, "kk")) ? " (k.k.)" : "1".equals(al(v, "pen")) ? " (p)" : "";
-        return ("⚽ " + al(v, "dk") + " " + al(v, "oyuncu") + ek).trim();
+        return new String[] { ("⚽ " + al(v, "dk") + " " + soyad(al(v, "oyuncu"))).trim(), ek };
+    }
+
+    private static final java.util.Set<String> ON_EKLER = new java.util.HashSet<>(java.util.Arrays.asList(
+        "van", "von", "de", "da", "di", "del", "della", "der", "den", "dos", "das", "do", "du", "le", "la",
+        "ten", "ter", "el", "al", "bin", "ben", "mac", "st."));
+    private static final java.util.Set<String> SON_EKLER = new java.util.HashSet<>(java.util.Arrays.asList(
+        "jr", "jr.", "júnior", "junior", "filho", "neto", "ii", "iii"));
+
+    /** Kart satırı tek satıra sığsın: "Victor Osimhen" → "Osimhen", "Virgil van Dijk" → "van Dijk",
+     *  "Vinícius Júnior" → "Vinícius Júnior" (son ek), tek adlı oyuncu olduğu gibi. */
+    static String soyad(String ad) {
+        String[] p = ad.trim().split("\\s+");
+        if (p.length < 2) return ad.trim();
+        int bas = p.length - 1;
+        if (SON_EKLER.contains(p[bas].toLowerCase(java.util.Locale.ROOT))) bas--;
+        while (bas > 0 && ON_EKLER.contains(p[bas - 1].toLowerCase(java.util.Locale.ROOT))) bas--;
+        StringBuilder sb = new StringBuilder();
+        for (int i = bas; i < p.length; i++) sb.append(i > bas ? " " : "").append(p[i]);
+        return sb.toString();
     }
 
     // ---- logolar

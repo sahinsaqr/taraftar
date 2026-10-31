@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: özel bildirim alanının sol girintisi ile sağ boşluğu arasındaki fark. Redmi Note 10 Pro
+         (Android 13, 440 dpi) ekran görüntüsünde: kart kenarı → logo ortası solda 280,5 px, sağda 179,5 px;
+         fark 101 px ≈ 37 dp. -->
+    <dimen name="kart_sag_bosluk">37dp</dimen>
+    <!-- daraltılmışta içerik alanı ikon ile ok arasında: aynı telefonda alan ortası kart ortasından 8 px solda; 6 dp başlangıç boşluğu ortayı 3 dp ≈ 8 px sağa alır -->
+    <dimen name="kart_kucuk_sol_bosluk">6dp</dimen>
+</resources>
