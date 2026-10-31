@@ -13,14 +13,47 @@ on:
 
 permissions:
   contents: write
+  actions: read     # "kontrol" işi çalışan izleyicileri listeler
 
-# Aynı anda tek bir görev çalışsın; maç izlenirken yenileri sırada bekler.
-concurrency:
-  group: futbol-izleyici
-  cancel-in-progress: false
+# Tetikleyiciler: GitHub zamanlaması (seyrek) + cron-job.org (30 dk'da bir workflow_dispatch, mod=otomatik).
+# Zaten çalışan bir izleyici varken gelen otomatik tetikleme beklemez, "kontrol" işinden sonra hemen biter.
+# Elle seçilen tam/hizli güncellemesi atlanmaz; "calis" işinin concurrency'si yüzünden izleyicinin bitmesini bekler.
 
 jobs:
+  kontrol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      calisiyor: ${{ steps.bak.outputs.calisiyor }}
+    steps:
+      - name: Çalışan izleyici var mı?
+        id: bak
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPO: ${{ github.repository }}
+          BU_CALISMA: ${{ github.run_id }}
+          OLAY: ${{ github.event_name }}
+          MOD: ${{ inputs.mod }}
+        run: |
+          if [ "$OLAY" = "workflow_dispatch" ] && [ "$MOD" != "otomatik" ]; then
+            echo "calisiyor=0" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Yalnız bundan önce başlamış çalışmalara bak: aynı anda gelen iki tetiklemeden eskisi kazanır.
+          n=0
+          for durum in in_progress queued; do
+            k=$(gh api "repos/$DEPO/actions/workflows/futbol.yml/runs?status=$durum&per_page=100" --jq "[.workflow_runs[] | select(.id < $BU_CALISMA)] | length")
+            n=$((n + k))
+          done
+          echo "Önceki, bitmemiş çalışma: $n"
+          echo "calisiyor=$n" >> "$GITHUB_OUTPUT"
+
   calis:
+    needs: kontrol
+    if: needs.kontrol.outputs.calisiyor == '0'
+    # Aynı anda tek izleyici; araya giren elle güncelleme sırada bekler.
+    concurrency:
+      group: futbol-izleyici
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:

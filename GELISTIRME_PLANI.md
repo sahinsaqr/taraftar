@@ -154,6 +154,20 @@ Bulut.bildirimIzniIste()          // Android 13+ izin penceresi
 - Google Cloud konsolunda Firebase API anahtarlarını kısıtla (Android paket adı + SHA-1, web için `sahinsaqr.github.io` ve `taraftar.mlkcraft.com`).
 - Yayından önce noindex ve robots.txt kaldırılacak (`index.html`'deki `<meta name="robots" content="noindex, nofollow">` ve kök dizindeki `robots.txt`).
 
+## Dış tetikleyici (cron-job.org) — bakım
+
+- GitHub zamanlaması seyrek tetiklendiği için cron-job.org 30 dk'da bir `futbol.yml` iş akışını
+  `workflow_dispatch` ile başlatıyor (`{"ref":"main","inputs":{"mod":"otomatik"}}`). İzleyici zaten çalışıyorsa
+  yeni çalışma `kontrol` işinden sonra hemen biter.
+- Kimlik: GitHub fine-grained token, yalnız `sahinsaqr/taraftar`, yalnız "Actions: Read and write".
+  Token yalnızca cron-job.org'daki işin `Authorization` başlığında durur; depoda ya da başka yerde yok.
+- **Token süresi 1 Kasım 2027'de doluyor. ⏰ HATIRLATMA: 25 Ekim 2027'de (bir hafta önce) yenile:**
+  GitHub → Settings → Developer settings → Fine-grained tokens → token → "Regenerate token" (1 yıl),
+  yeni değeri cron-job.org'daki işin `Authorization: Bearer ...` başlığına yapıştır, ardından
+  cron-job.org'da "Test run" ile 204 yanıtı ve GitHub Actions'ta yeni `workflow_dispatch` çalışmasını gör.
+  Yeniledikten sonra bu tarihleri bir yıl ileri al.
+- Belirti: cron-job.org geçmişinde 401/403 → token dolmuş/yanlış; 404 → dosya adı ya da izin yanlış; 422 → gövde/girdi yanlış.
+
 ## Doğrulama listesi (her aşamadan sonra ilgili olanlar)
 
 - [ ] Web: misafir açılış, takım ekleme, Google ile giriş, başka tarayıcıda aynı hesapla takımların görünmesi, çıkış, hesap silme.
