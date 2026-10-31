@@ -1,9 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Uygulamayı yalnız sahibi kullanır: yalnız bu Google hesabının uid'si okuyup yazabilir.
+    // Misafir (anonim) ya da başka bir Google hesabıyla giriş yapan hiçbir belgeye erişemez.
+    function sahip() {
+      return request.auth != null && request.auth.uid == 'rJaUEBFta4QZ83OTyhDiMHQu3cm2';
+    }
+
     match /kullanicilar/{uid} {
-      allow read, delete: if request.auth != null && request.auth.uid == uid;
-      allow create, update: if request.auth != null && request.auth.uid == uid
+      allow read, delete: if sahip() && request.auth.uid == uid;
+      allow create, update: if sahip() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['takimlar', 'bildirim', 'guncelleme'])
         && request.resource.data.takimlar is list
         && request.resource.data.takimlar.size() <= 50;
