@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bildirim  # noqa: E402
 
 ORNEK = {
-    "gol": ("⚽ GOL! Galatasaray 2–1 Fenerbahçe", "67' Mauro Icardi (p) · Galatasaray"),
+    "gol": ("⚽ GOL! Galatasaray 2–1 Fenerbahçe", "90'+4' Przemysław Frankowski (p) · Galatasaray"),
     "mac": ("Maç başladı: Galatasaray – Fenerbahçe", "Süper Lig"),
     "son": ("Maç sonu: Galatasaray 2–1 Fenerbahçe", "Süper Lig"),
     "hat": ("15 dk sonra: Galatasaray – Fenerbahçe · 20:00", "Süper Lig"),
@@ -27,7 +27,8 @@ LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/{}.png&w=12
 KART_TABAN = {"lig": "Süper Lig", "ev_ad": "Galatasaray", "dep_ad": "Fenerbahçe", "ev_kisa": "GAL", "dep_kisa": "FEN",
               "ev_logo": LOGO.format(432), "dep_logo": LOGO.format(436), "ev_renk": "aa0031", "dep_renk": "ffff00"}
 KART = {
-    "gol": {**KART_TABAN, "ev_skor": 2, "dep_skor": 1, "dk": "67'", "oyuncu": "Mauro Icardi", "atan": "ev", "pen": "1", "kk": ""},
+    "gol": {**KART_TABAN, "ev_skor": 2, "dep_skor": 1, "dk": "90'+4'", "oyuncu": "Przemysław Frankowski",
+            "atan": "ev", "pen": "1", "kk": ""},   # uzun ad: kartta "⚽ 90'+4' Frankowski (p)", sığmazsa "…"
     "mac": {**KART_TABAN, "ev_skor": 0, "dep_skor": 0},
     "son": {**KART_TABAN, "ev_skor": 2, "dep_skor": 1},
 }
