@@ -43,15 +43,19 @@ if __name__ == "__main__":
     turler = list(ORNEK) if tur == "hepsi" else [tur]
     if any(t not in ORNEK for t in turler):
         sys.exit(f"Bilinmeyen tür: {tur} (gol | mac | son | hat | hepsi)")
+    if not bildirim._baslat():
+        sys.exit("FIREBASE_HESAP yok; deneme bildirimi gönderilemez.")
     hata = False
     for t in turler:
         baslik, govde = ORNEK[t]
         # gerçek maçtaki gibi tek etiket (maç id): sonraki deneme öncekinin yerine geçer
         # sade metin t{ID}_{tür} konusuna, skor kartı (veri) t{ID}_{tür}k konusuna gider
-        if bildirim.gonder((takim_id,), t, baslik, govde, MAC_ID, OLAY[t], kart=KART.get(t)):
+        istenen = bildirim.parcalar(t, KART.get(t))
+        giden = bildirim.gonder((takim_id,), t, baslik, govde, MAC_ID, OLAY[t], kart=KART.get(t))
+        if set(giden) == set(istenen):
             print(f"Gönderildi: t{takim_id}_{t} → kanal {bildirim.KANAL[t]}")
         else:
             hata = True
-            print(f"Gönderilemedi: {t}")
+            print(f"Gönderilemedi: {t} ({', '.join(sorted(set(istenen) - set(giden)))})")
     if hata:
-        sys.exit("Bazı bildirimler gönderilemedi (FIREBASE_HESAP var mı?)")
+        sys.exit("Bazı bildirimler gönderilemedi")

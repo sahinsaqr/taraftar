@@ -69,18 +69,46 @@ def takip_edilenler():
     return {str(t["id"]) for t in veri.get("bildirim_takimlari", []) if t.get("id")}
 
 
+def actions_icinde():
+    return os.environ.get("GITHUB_ACTIONS") == "true"
+
+
+def git(*args, kontrol=True):
+    return subprocess.run(["git", *args], cwd=KOK, check=kontrol, capture_output=True, text=True)
+
+
+def uzak_json(yol):
+    """Depodaki dosyanın uzaktaki (origin) son halini okur; yerel çalışma kopyasına dokunmaz.
+    Yalnız GitHub Actions içinde; dosya yoksa ya da okunamazsa None."""
+    if not actions_icinde():
+        return None
+    if git("fetch", "-q", kontrol=False).returncode != 0:
+        return None
+    r = git("show", f"@{{u}}:{yol}", kontrol=False)
+    if r.returncode != 0:
+        return None
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def git_cek():
+    """Uzaktaki son değişiklikleri çalışma kopyasına alır (yalnız GitHub Actions içinde)."""
+    if not actions_icinde():
+        return False
+    return git("pull", "-q", "--rebase", "-X", "theirs", kontrol=False).returncode == 0
+
+
 def git_gonder(mesaj):
-    """veri/ klasöründeki değişiklikleri depoya gönderir.
+    """veri/ klasöründeki değişiklikleri depoya gönderir. Gönderildiyse True; değişiklik yoksa ya da
+    gönderilemediyse False.
 
     Sadece GitHub Actions içinde (GITHUB_ACTIONS=true) çalışır; bilgisayarda
     deneme yaparken hiçbir şey göndermez.
     """
-    if os.environ.get("GITHUB_ACTIONS") != "true":
+    if not actions_icinde():
         return False
-
-    def git(*args, kontrol=True):
-        return subprocess.run(["git", *args], cwd=KOK, check=kontrol,
-                              capture_output=True, text=True)
 
     git("add", "veri")
     if git("diff", "--cached", "--quiet", kontrol=False).returncode == 0:

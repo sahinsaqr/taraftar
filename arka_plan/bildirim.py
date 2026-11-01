@@ -7,9 +7,13 @@ takip ettiğini bilmez; olayı iki takımın ilgili konusuna tek mesajla gönder
 (koşul: 't1_gol' in topics || 't2_gol' in topics), böylece iki takımı da takip
 eden kişi aynı bildirimi iki kez almaz.
 
+Her FCM çağrısı geçici hatada (ağ, UNAVAILABLE, INTERNAL, kota…) en fazla 3 kez denenir; kalıcı hatada
+(geçersiz istek, yetki) hemen vazgeçilir. Başarıda FCM'nin mesaj kimliği loga yazılır. gonder() hangi
+parçaların (sade metin / skor kartı) gittiğini döner; gitmeyenleri mac_izle.Bildirici sonra yeniden dener.
+
 Ortam değişkeni:
   FIREBASE_HESAP : servis hesabı JSON'unun base64 hali (GitHub gizli anahtarı).
-                   Yoksa bildirimler sadece konsola yazılır.
+                   Yoksa bildirimler sadece konsola yazılır (gönderilmiş sayılır).
 """
 import base64
 import json
@@ -25,6 +29,9 @@ GOL_SESI = "gol_sesi"      # res/raw/gol_sesi.ogg (Android 8 öncesi; sonrasınd
 # "Skor kartı" görünümü: bu türler ayrıca t{ID}_{tür}k konularına yalnız veri (data-only) mesajı olarak gider;
 # bildirimi uygulamanın yerel kodu çizer (BildirimServisi.java). Hatırlatma yalnız metin.
 KART_TURLERI = ("gol", "mac", "son")
+DENEME_BEKLE = (2, 5)      # geçici hatada yeniden denemeden önce beklenen saniyeler (toplam 3 deneme)
+KALICI_HATALAR = {"INVALID_ARGUMENT", "PERMISSION_DENIED", "UNAUTHENTICATED", "NOT_FOUND",
+                  "FAILED_PRECONDITION", "ALREADY_EXISTS", "OUT_OF_RANGE"}
 
 _uygulama = None
 _denendi = False
@@ -52,16 +59,31 @@ def kosul(takim_idleri, tur):
     return " || ".join(f"'{k}' in topics" for k in konular)
 
 
-def gonder(takim_idleri, tur, baslik, govde, mac_id, olay="", kart=None):
+def parcalar(tur, kart):
+    """Bir olayın gönderilecek parçaları: her zaman sade metin, kart verisi varsa skor kartı."""
+    return ["sade"] + (["kart"] if kart is not None and tur in KART_TURLERI else [])
+
+
+def gonder(takim_idleri, tur, baslik, govde, mac_id, olay="", kart=None, parcalar_=None):
     """Olayı takımların `tur` konusuna (sade metin) ve kart verisi varsa `tur`k konusuna (skor kartı,
-    yalnız veri) gönderir. Sade metin gönderimi başarılıysa True."""
+    yalnız veri) gönderir. `parcalar_` verilirse yalnız o parçalar ("sade", "kart") gönderilir.
+    Başarıyla giden parçaların listesini döner (kimlik yoksa hepsi gitmiş sayılır)."""
     assert tur in TURLER, tur
+    istenen = parcalar_ if parcalar_ is not None else parcalar(tur, kart)
+    giden = []
+    if "kart" in istenen and kart is not None and tur in KART_TURLERI:
+        if kart_gonder(takim_idleri, tur, baslik, govde, mac_id, olay, kart):
+            giden.append("kart")
+    if "sade" in istenen and _sade_gonder(takim_idleri, tur, baslik, govde, mac_id, olay):
+        giden.append("sade")
+    return giden
+
+
+def _sade_gonder(takim_idleri, tur, baslik, govde, mac_id, olay):
     k = kosul(takim_idleri, tur)
     print(f"[FCM {tur}] {baslik} | {govde.replace(chr(10), ' / ')}  →  {k}")
-    if kart is not None and tur in KART_TURLERI:
-        kart_gonder(takim_idleri, tur, baslik, govde, mac_id, olay, kart)
     if not k or not _baslat():
-        return False
+        return True   # gönderilecek konu ya da kimlik yok: tekrar denemenin anlamı yok
     from firebase_admin import messaging
     mesaj = messaging.Message(
         condition=k,
@@ -78,12 +100,32 @@ def gonder(takim_idleri, tur, baslik, govde, mac_id, olay="", kart=None):
         ),
         data={"mac": str(mac_id), "tur": tur, "olay": olay, "gonderim": _zaman()},
     )
-    try:
-        messaging.send(mesaj)
-        return True
-    except Exception as h:  # ağ, kota vb.; izlemeyi durdurmasın
-        print(f"  FCM gönderilemedi: {h}")
-        return False
+    return _yolla(mesaj, tur)
+
+
+def _gecici_mi(hata):
+    """Yeniden denemeye değer mi? firebase_admin hatalarının `code` alanına bakar; diğerleri (ağ) geçici."""
+    if isinstance(hata, (ValueError, TypeError)):
+        return False   # mesaj kurulamadı
+    return getattr(hata, "code", None) not in KALICI_HATALAR
+
+
+def _yolla(mesaj, ne):
+    """messaging.send; geçici hatada DENEME_BEKLE aralıklarıyla yeniden dener. Başarıda mesaj kimliği loglanır."""
+    from firebase_admin import messaging
+    for i in range(len(DENEME_BEKLE) + 1):
+        try:
+            kimlik = messaging.send(mesaj)
+            print(f"  FCM ok ({ne}): {kimlik}")
+            return True
+        except Exception as h:  # ağ, kota vb.; izlemeyi durdurmasın
+            gecici = _gecici_mi(h)
+            print(f"  FCM gönderilemedi ({ne}, deneme {i + 1}{'' if gecici else ', kalıcı hata'}): "
+                  f"{getattr(h, 'code', type(h).__name__)}: {h}")
+            if not gecici or i == len(DENEME_BEKLE):
+                return False
+            time.sleep(DENEME_BEKLE[i])
+    return False
 
 
 def _zaman():
@@ -124,12 +166,7 @@ def guncelle(takim_idleri, tur, baslik, govde, mac_id, olay, kart):
 def _veri_gonder(k, veri):
     """Koşula yüksek öncelikli, yalnız veri mesajı (bildirimi uygulama çizer)."""
     if not k or not _baslat():
-        return False
+        return True   # konu ya da kimlik yok: tekrar denemenin anlamı yok
     from firebase_admin import messaging
     mesaj = messaging.Message(condition=k, data=veri, android=messaging.AndroidConfig(priority="high", ttl=3600))
-    try:
-        messaging.send(mesaj)
-        return True
-    except Exception as h:
-        print(f"  FCM (veri) gönderilemedi: {h}")
-        return False
+    return _yolla(mesaj, f"{veri.get('tur', '')}k" if veri.get("kart") else f"{veri.get('tur', '')} veri")

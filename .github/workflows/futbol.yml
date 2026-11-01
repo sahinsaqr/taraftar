@@ -8,23 +8,33 @@ on:
       mod:
         description: "Veri güncelleme biçimi"
         type: choice
-        options: [otomatik, tam, hizli]
+        options: [otomatik, tam, hizli, devir]
         default: otomatik
+      onceki:
+        description: "(devir) Devreden izleyicinin çalışma kimliği; izleyici kendisi doldurur, elle kullanma"
+        default: ""
+      devir_testi_dk:
+        description: "Deneme: izleyici bu kadar dakika sonra kendi yerine yenisini başlatıp devretsin (maç yokken de bekler). Boş = normal"
+        default: ""
 
 permissions:
   contents: write
-  actions: read     # "kontrol" işi çalışan izleyicileri listeler
+  actions: write    # "kontrol" çalışan izleyicileri listeler; izleyici devir için kendi yerine yeni çalışma başlatır
 
 # Tetikleyiciler: GitHub zamanlaması (seyrek) + cron-job.org (30 dk'da bir workflow_dispatch, mod=otomatik).
 # Zaten çalışan bir izleyici varken gelen otomatik tetikleme beklemez, "kontrol" işinden sonra hemen biter.
-# Elle seçilen tam/hizli güncellemesi atlanmaz; "calis" işinin concurrency'si yüzünden izleyicinin bitmesini bekler.
+# Elle seçilen tam/hizli güncellemesi atlanmaz; izleyici çalışıyorsa yalnız veriyi günceller, izlemeye karışmaz.
+# Devir (arka_plan/devir.py): izleyici 5,5 saat sınırına 15 dk kala, izlenecek maç varsa mod=devir ile yenisini
+# başlatır; yenisi hazır olunca durumu devredip kapanır. Bu yüzden "calis" işinde concurrency yok: kısa süre iki
+# çalışma üst üste biner ama bildirim yalnız biri gönderir. Aynı anda tek izleyiciyi "kontrol" ve devir sağlar.
 
 jobs:
   kontrol:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
-      calisiyor: ${{ steps.bak.outputs.calisiyor }}
+      calistir: ${{ steps.bak.outputs.calistir }}
+      izle: ${{ steps.bak.outputs.izle }}
     steps:
       - name: Çalışan izleyici var mı?
         id: bak
@@ -35,8 +45,9 @@ jobs:
           OLAY: ${{ github.event_name }}
           MOD: ${{ inputs.mod }}
         run: |
-          if [ "$OLAY" = "workflow_dispatch" ] && [ "$MOD" != "otomatik" ]; then
-            echo "calisiyor=0" >> "$GITHUB_OUTPUT"; exit 0
+          if [ "$OLAY" = "workflow_dispatch" ] && [ "$MOD" = "devir" ]; then
+            echo "Devir: önceki izleyicinin yerine geçecek."
+            { echo "calistir=1"; echo "izle=1"; } >> "$GITHUB_OUTPUT"; exit 0
           fi
           # Yalnız bundan önce başlamış çalışmalara bak: aynı anda gelen iki tetiklemeden eskisi kazanır.
           n=0
@@ -45,15 +56,19 @@ jobs:
             n=$((n + k))
           done
           echo "Önceki, bitmemiş çalışma: $n"
-          echo "calisiyor=$n" >> "$GITHUB_OUTPUT"
+          if [ "$OLAY" = "workflow_dispatch" ] && [ "$MOD" != "otomatik" ]; then
+            # elle tam/hizli: her zaman çalışır; izleyici varsa yalnız veriyi günceller
+            echo "calistir=1" >> "$GITHUB_OUTPUT"
+            [ "$n" = "0" ] && echo "izle=1" >> "$GITHUB_OUTPUT" || echo "izle=0" >> "$GITHUB_OUTPUT"
+          elif [ "$n" = "0" ]; then
+            { echo "calistir=1"; echo "izle=1"; } >> "$GITHUB_OUTPUT"
+          else
+            { echo "calistir=0"; echo "izle=0"; } >> "$GITHUB_OUTPUT"
+          fi
 
   calis:
     needs: kontrol
-    if: needs.kontrol.outputs.calisiyor == '0'
-    # Aynı anda tek izleyici; araya giren elle güncelleme sırada bekler.
-    concurrency:
-      group: futbol-izleyici
-      cancel-in-progress: false
+    if: needs.kontrol.outputs.calistir == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -72,7 +87,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Elle seçilen veri güncellemesi
-        if: github.event_name == 'workflow_dispatch' && inputs.mod != 'otomatik'
+        if: github.event_name == 'workflow_dispatch' && (inputs.mod == 'tam' || inputs.mod == 'hizli')
         run: python arka_plan/veri_guncelle.py ${{ inputs.mod }}
 
       - name: Verileri güncelle ve maçları izle
@@ -81,4 +96,8 @@ jobs:
           NTFY_KONU: ${{ secrets.NTFY_KONU }}
           UYGULAMA_ADRESI: ${{ vars.UYGULAMA_ADRESI }}
           PYTHONUNBUFFERED: "1"
+          GH_TOKEN: ${{ github.token }}          # devir: yeni çalışmayı tetikler, önceki çalışmanın durumuna bakar
+          SADECE_VERI: ${{ needs.kontrol.outputs.izle == '0' && '1' || '' }}
+          DEVIR_ONCEKI: ${{ inputs.onceki }}
+          DEVIR_TESTI_DK: ${{ inputs.devir_testi_dk }}
         run: python arka_plan/mac_izle.py

@@ -9,8 +9,13 @@
 3. Maç detaylarını (olaylar, istatistik, kadrolar) veri/detay/ altına yazar (detay.py):
    canlı maçlar her gönderimde, biten maçlar bir kez, kadrolar açıklanınca bir kez.
 
-5,5 saat sınırı dolunca görev biter; durum canli.json'da saklandığı için
-sıradaki zamanlanmış görev kaldığı yerden devam eder, aynı olayı tekrar
+Bildirim önce gönderilir, "gönderildi" işareti ancak başarılı olunca konur. Gidemeyen bildirim
+(sade metin ya da skor kartı parçası) bekleyenler kuyruğunda her turda yeniden denenir; maç izlemeden
+çıkmış olsa da (ör. bitiş). Kuyruk canli.json'da saklanır, sonraki izleyici devam eder.
+
+5,5 saat sınırından 15 dk önce izlenecek maç varsa izleyici kendi yerine yeni bir çalışma başlatır ve
+yenisi hazır olunca durumu devredip kapanır (devir.py). Devir olmazsa sınır dolunca görev biter;
+durum canli.json'da saklandığı için sıradaki görev kaldığı yerden devam eder, aynı olayı tekrar
 bildirmez.
 
 Ortam değişkenleri:
@@ -19,6 +24,8 @@ Ortam değişkenleri:
   UYGULAMA_ADRESI   : ntfy bildirimine tıklayınca açılacak adres (isteğe bağlı)
   KONTROL_ARALIGI   : maç başlamadan kaç saniyede bir kontrol (varsayılan 60)
   KONTROL_CANLI     : oynanan maç varken kaç saniyede bir kontrol (varsayılan 20)
+  SADECE_VERI       : "1" ise yalnız veri güncellenir, izlenmez (başka izleyici çalışırken elle güncelleme)
+  DEVIR_ONCEKI, DEVIR_TESTI_DK, GH_TOKEN : devir için, bkz. devir.py
 """
 import json
 import os
@@ -30,6 +37,7 @@ from datetime import timedelta
 
 import bildirim
 import detay
+import devir
 import espn
 import veri_guncelle
 from ortak import (VERI, ayarlar, git_gonder, iso, json_oku, json_yaz, simdi,
@@ -46,9 +54,14 @@ KONTROL = int(os.environ.get("KONTROL_ARALIGI", "60"))
 # Lig+gün başına bir istek: 20 sn'de saatte 180 istek (canlı detaylar 4 dk'da bir, değişmez).
 KONTROL_CANLI = int(os.environ.get("KONTROL_CANLI", "20"))
 GONDERIM_ARALIGI = timedelta(minutes=4)  # skor değişmese de canlı dakikayı güncelle
+# Gidemeyen bildirimden bu kadar sonra vazgeçilir (hatırlatmadaki "N dk sonra" çabuk bayatlar)
+VAZGEC = {"gol": timedelta(minutes=10), "hat": timedelta(minutes=3)}
+VAZGEC_DIGER = timedelta(minutes=30)
 
 BITTI = {"STATUS_FULL_TIME", "STATUS_FINAL", "STATUS_FINAL_AET", "STATUS_FINAL_PEN",
          "STATUS_END_OF_EXTRATIME"}
+# ESPN oynanan maçta FIRST/SECOND_HALF ile IN_PROGRESS arasında gidip geliyor: hepsi aynı durum sayılır
+OYNANIYOR = {"STATUS_FIRST_HALF", "STATUS_SECOND_HALF", "STATUS_IN_PROGRESS"}
 ERTELENDI = {"STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_ABANDONED",
              "STATUS_SUSPENDED", "STATUS_DELAYED", "STATUS_FORFEIT"}
 
@@ -75,13 +88,6 @@ def kart_bilgisi(m, ayrinti=None):
         kart[f"{taraf}_logo"] = logo_adresi(t.get("logo") or "")
         kart[f"{taraf}_renk"] = t.get("renk", "")
     return kart
-
-
-def bildir(m, tur, olay, baslik, mesaj, etiketler=("soccer",), oncelik=4, ayrinti=None):
-    """Olayı maçın iki takımının `tur` konusuna (sade metin ve skor kartı) ve varsa ntfy'ye gönderir."""
-    bildirim.gonder((m["ev"]["id"], m["dep"]["id"]), tur, baslik, mesaj, m["id"], olay,
-                    kart=kart_bilgisi(m, ayrinti) if tur in bildirim.KART_TURLERI else None)
-    ntfy_gonder(m, baslik, mesaj, etiketler, oncelik)
 
 
 def ntfy_gonder(m, baslik, mesaj, etiketler, oncelik):
@@ -145,17 +151,59 @@ def gol_ayrintisi(m, atan, atan_skor):
 
 
 class Bildirici:
-    """Aynı olay için iki kez bildirim gönderilmesini engeller."""
+    """Her olayı bir kez bildirir: önce gönderir, anahtarı ancak başarılı olunca işaretler.
 
-    def __init__(self, gonderilenler):
+    Gidemeyen parçalar (sade / kart) bekleyenlere girer, yeniden_dene() her turda yalnız eksik parçayı
+    gönderir (telefona çift bildirim düşmez); VAZGEC süresi geçince vazgeçilir."""
+
+    def __init__(self, gonderilenler, bekleyenler=()):
         self.gonderilenler = set(gonderilenler)
+        self.bekleyenler = {i["anahtar"]: i for i in bekleyenler}
+        self.degisti = False   # gönderim/vazgeçme oldu: canli.json yeniden yazılmalı
 
-    def bir_kez(self, anahtar, *args, **kw):
-        if anahtar in self.gonderilenler:
+    def bir_kez(self, anahtar, m, tur, olay, baslik, mesaj, etiketler=("soccer",), oncelik=4, ayrinti=None):
+        """Bildirildiyse ya da sıradaysa False; gönderildiyse ya da kuyruğa alındıysa True."""
+        if anahtar in self.gonderilenler or anahtar in self.bekleyenler:
             return False
-        self.gonderilenler.add(anahtar)
-        bildir(*args, **kw)
+        kart = kart_bilgisi(m, ayrinti) if tur in bildirim.KART_TURLERI else None
+        is_ = {"anahtar": anahtar, "takimlar": [m["ev"]["id"], m["dep"]["id"]], "mac": m["id"], "tur": tur,
+               "olay": olay, "baslik": baslik, "govde": mesaj, "kart": kart, "ilk": iso(simdi()), "deneme": 0}
+        ntfy_gonder(m, baslik, mesaj, etiketler, oncelik)
+        self._gonder(is_)
         return True
+
+    def _gonder(self, is_, parcalar=None):
+        """parcalar None: ilk gönderim (olayın tüm parçaları); yoksa yalnız eksik kalanlar."""
+        giden = bildirim.gonder(is_["takimlar"], is_["tur"], is_["baslik"], is_["govde"], is_["mac"],
+                                is_["olay"], kart=is_["kart"], parcalar_=parcalar)
+        istenen = parcalar if parcalar is not None else bildirim.parcalar(is_["tur"], is_["kart"])
+        kalan = [p for p in istenen if p not in (giden or [])]
+        is_["deneme"] += 1
+        self.degisti = True
+        if kalan:
+            is_["kalan"] = kalan
+            self.bekleyenler[is_["anahtar"]] = is_
+            print(f"  bildirim sırada: {is_['anahtar']} ({', '.join(kalan)} gitmedi, {is_['deneme']}. tur)")
+        else:
+            self.bekleyenler.pop(is_["anahtar"], None)
+            self.gonderilenler.add(is_["anahtar"])
+            if is_["deneme"] > 1:
+                print(f"  bildirim {is_['deneme']}. turda gitti: {is_['anahtar']}")
+
+    def yeniden_dene(self):
+        for anahtar, is_ in list(self.bekleyenler.items()):
+            if simdi() - zaman_oku(is_["ilk"]) > VAZGEC.get(is_["tur"], VAZGEC_DIGER):
+                print(f"  bildirimden vazgeçildi (çok gecikti): {anahtar} ({', '.join(is_['kalan'])})")
+                self.bekleyenler.pop(anahtar)
+                self.gonderilenler.add(anahtar)   # tekrar tekrar üretilmesin
+                self.degisti = True
+                continue
+            self._gonder(is_, is_["kalan"])
+
+    def unut(self, anahtar):
+        """Anahtar yeniden bildirilebilsin (ör. VAR iptali); sıradaysa gönderilmez."""
+        self.gonderilenler.discard(anahtar)
+        self.bekleyenler.pop(anahtar, None)
 
 
 def degisiklikleri_bildir(b, eski, yeni):
@@ -201,8 +249,8 @@ def degisiklikleri_bildir(b, eski, yeni):
                       skor_metni(yeni), ("x",),
                       ayrinti={"atan": "ev" if iptal is yeni["ev"] else "dep", "dk": yeni.get("dakika") or ""})
             # İptal edilen skor tekrar olursa yeniden bildirilebilsin
-            b.gonderilenler.discard(f"{mid}:skor:{eski_ev}-{eski_dep}")
-            b.gonderilenler.discard(f"{mid}:iptal:{ev}-{dep}")
+            b.unut(f"{mid}:skor:{eski_ev}-{eski_dep}")
+            b.gonderilenler.discard(f"{mid}:iptal:{ev}-{dep}")   # sıradaysa yine de gönderilsin
     else:
         golcuyu_ekle(b, yeni)
 
@@ -278,31 +326,76 @@ def guncel_durum_getir(m):
     return None
 
 
+def durumu_sabitle(eski, yeni):
+    """ESPN'in FIRST/SECOND_HALF ↔ IN_PROGRESS gidip gelmesini yok sayar: oynanırken genel
+    IN_PROGRESS gelirse önceki (daha belirgin) kod korunur; canli.json ve commit'ler oynamaz."""
+    if eski and yeni.get("durum_kodu") == "STATUS_IN_PROGRESS" and eski.get("durum_kodu") in OYNANIYOR:
+        yeni["durum_kodu"] = eski["durum_kodu"]
+    return yeni
+
+
+def _durum_ozeti(m):
+    kod = m.get("durum_kodu")
+    return (m.get("ev_skor"), m.get("dep_skor"), "oynaniyor" if kod in OYNANIYOR else kod)
+
+
 def izle():
     canli = json_oku(VERI / "canli.json", {}) or {}
-    b = Bildirici(canli.get("bildirilenler", []))
+    b = Bildirici(canli.get("bildirilenler", []), canli.get("bekleyenler", []))
     son_durum = {m["id"]: m for m in canli.get("maclar", [])}
 
     baslangic = simdi()
     son_gonderim = simdi() - GONDERIM_ARALIGI
     izlenen_var = False
+    azami = AZAMI_SURE
+    test_dk = devir.test_dakikasi()
+    if test_dk:
+        azami = timedelta(minutes=test_dk) + devir.DEVIR_PAYI
+        print(f"Devir denemesi: {test_dk} dk sonra devredilecek (maç yoksa da beklenir), sınır {azami}.")
+    devir_ani = baslangic + azami - devir.DEVIR_PAYI
+    devirci = devir.Devirci()
 
-    while simdi() - baslangic < AZAMI_SURE:
+    def uyu(sn):
+        """Devir anını ve sıradaki bildirimleri kaçırmayacak kadar uyur."""
+        if simdi() < devir_ani:
+            sn = min(sn, max(1, (devir_ani - simdi()).total_seconds()))
+        if b.bekleyenler:
+            sn = min(sn, KONTROL_CANLI)
+        time.sleep(sn)
+
+    while simdi() - baslangic < azami:
         su_an = simdi()
+        b.yeniden_dene()
         maclar = tum_maclar()
         # izleme sırasında öğrendiğimiz en güncel durumu kullan
         for mid, m in son_durum.items():
             if mid in maclar:
                 maclar[mid] = m
         adaylar = [m for m in maclar.values() if izlenecek_mi(m, su_an)]
+
+        # süre sınırına yaklaşıldı ve izlenecek maç var: yeni izleyiciyi başlat, hazır olunca devret
+        if su_an >= devir_ani and (adaylar or test_dk) and devirci.adim(su_an):
+            canli_yaz(son_durum, b)
+            if devirci.devret():
+                return
+
         if not adaylar:
+            if test_dk:
+                if su_an < devir_ani:
+                    print(f"Devir denemesi: maç yok, devre {int((devir_ani - su_an).total_seconds())} sn var.")
+                uyu(30 if su_an < devir_ani else 5)
+                continue
+            if b.bekleyenler:   # ör. biten maçın bitiş bildirimi gidemedi: vazgeçene kadar dene
+                canli_yaz(son_durum, b)
+                uyu(KONTROL_CANLI)
+                continue
             sonraki = sonraki_baslangic(maclar, su_an)
-            kalan = AZAMI_SURE - (su_an - baslangic)
+            kalan = azami - (su_an - baslangic)
             if not sonraki or sonraki - ILERI_BAK - su_an > min(BOSTA_BEKLE, kalan):
                 break
             bekle = max(30, min((sonraki - ILERI_BAK - su_an).total_seconds(), 1800))
             print(f"Sıradaki maç {sonraki:%H:%M} UTC; izlemeye {int(bekle)} sn sonra bakılacak.")
-            time.sleep(bekle)
+            uyu(bekle)
             ara_guncelle()
             continue
 
@@ -314,7 +407,7 @@ def izle():
             bekle = (ilk - HATIRLATMA - timedelta(minutes=1) - su_an).total_seconds()
             bekle = max(30, min(bekle, 600))
             print(f"Sıradaki maç {ilk:%H:%M} UTC; {int(bekle)} sn bekleniyor.")
-            time.sleep(bekle)
+            uyu(bekle)
             continue
 
         degisti = False
@@ -333,9 +426,9 @@ def izle():
                 if not yeni:
                     continue
                 eski = son_durum.get(m["id"])
+                durumu_sabitle(eski, yeni)
                 degisiklikleri_bildir(b, eski, yeni)
-                if not eski or (eski.get("ev_skor"), eski.get("dep_skor"), eski.get("durum_kodu")) != \
-                        (yeni["ev_skor"], yeni["dep_skor"], yeni["durum_kodu"]):
+                if not eski or _durum_ozeti(eski) != _durum_ozeti(yeni):
                     degisti = True
                 son_durum[m["id"]] = yeni
                 print(f"{yeni['dakika'] or yeni['durum']:>6} {skor_metni(yeni)}")
@@ -349,15 +442,19 @@ def izle():
             son_gonderim = simdi()
         oynanan = any(son_durum.get(m["id"], m).get("durum") == "in" or zaman_oku(m["tarih"]) <= su_an
                       for m in aktif)
-        time.sleep(KONTROL_CANLI if oynanan else KONTROL)
+        uyu(KONTROL_CANLI if oynanan else KONTROL)
 
-    if izlenen_var:
+    if devirci.istendi:
+        print("Devir tamamlanamadı; süre doldu, izleyici kapanıyor (sıradaki tetikleme devam eder).")
+    if izlenen_var or b.degisti:   # ör. yalnız önceki izleyiciden kalan bildirim gönderildi
         canli_yaz(son_durum, b)
+    if izlenen_var:
         try:
             veri_guncelle.guncelle("hizli")
         except veri_guncelle.GuncellemeHatasi as h:
             print(f"Maç sonrası güncelleme başarısız: {h}")
         detay.eksikleri_yaz(list(tum_maclar().values()))
+    if izlenen_var or b.degisti:
         git_gonder("Maç sonrası veriler güncellendi")
 
 
@@ -368,8 +465,9 @@ def canli_yaz(son_durum, b):
     ids = {m["id"] for m in maclar}
     # bildirim kayıtlarını son maçlarla sınırlı tut
     bildirilenler = sorted(k for k in b.gonderilenler if k.split(":")[0] in ids)
+    bekleyenler = [b.bekleyenler[k] for k in sorted(b.bekleyenler)]
     json_yaz(VERI / "canli.json", {"guncelleme": iso(), "maclar": maclar,
-                                   "bildirilenler": bildirilenler})
+                                   "bildirilenler": bildirilenler, "bekleyenler": bekleyenler})
 
 
 if __name__ == "__main__":
@@ -383,6 +481,12 @@ if __name__ == "__main__":
     detay.eskileri_sil()
     detay.eksikleri_yaz(list(tum_maclar().values()))
     git_gonder("Fikstür ve puan durumu güncellendi")  # değişiklik yoksa bir şey yapmaz
-    izle()  # veri güncellenemese de canlı maç izleme ve bildirimler sürsün
+    if os.environ.get("SADECE_VERI") == "1":
+        print("Başka izleyici çalışıyor; yalnız veri güncellendi, izleme o izleyicide sürüyor.")
+    else:
+        onceki = os.environ.get("DEVIR_ONCEKI", "").strip()
+        if onceki:
+            devir.devri_al(onceki)   # önceki izleyici durumu devredene kadar bildirim gönderilmez
+        izle()  # veri güncellenemese de canlı maç izleme ve bildirimler sürsün
     if hata:
         sys.exit(1)

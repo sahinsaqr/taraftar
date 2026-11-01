@@ -168,6 +168,20 @@ Bulut.bildirimIzniIste()          // Android 13+ izin penceresi
   Yeniledikten sonra bu tarihleri bir yıl ileri al.
 - Belirti: cron-job.org geçmişinde 401/403 → token dolmuş/yanlış; 404 → dosya adı ya da izin yanlış; 422 → gövde/girdi yanlış.
 
+## İzleyici devri (5,5 saat sınırı) — bakım
+
+- İzleyici 5 sa 15 dk'da, izlenecek maç varsa `futbol.yml`'yi `mod=devir, onceki=<run id>` ile kendisi tetikler
+  (`GITHUB_TOKEN`, `actions: write`). Yenisi hazır olunca `veri/devir.json`'a "hazir" yazar; eskisi son
+  `canli.json`'u "devredildi" işaretiyle aynı commit'te gönderip kapanır, yenisi onu çekip devam eder (`arka_plan/devir.py`).
+- Logda aranacak satırlar: eski izleyicide `Devir: yeni izleyici istendi → HTTP 204`, `Devir: yeni izleyici hazır`,
+  `Devir: durum devredildi → {...}`; yenisinde `Devir: durum alındı (... sn bekledi) → {...}; devredenle AYNI`.
+- Devir olmazsa (tetikleme hatası, yeni 3 dk'da hazır olmazsa) eski davranış: sınırda kapanır, sıradaki tetikleme devam eder.
+- **Deneme:** Actions → "Taraftar verisi ve maç izleme" → Run workflow → `mod=otomatik`, `devir_testi_dk=10`.
+  İzleyici maç olmasa da 10 dk bekleyip devreder; yeni çalışmaya bu girdi aktarılmaz, zincir bir devirden sonra durur.
+- Bildirimler: gönderilemeyen olay işaretlenmez, `canli.json` → `bekleyenler` kuyruğunda her turda yeniden denenir
+  (gol 10 dk, hatırlatma 3 dk, diğerleri 30 dk sonra vazgeçilir; logda `bildirim sırada` / `vazgeçildi`).
+  Her başarılı FCM gönderimi `FCM ok (tür): projects/.../messages/...` satırıyla loglanır.
+
 ## Doğrulama listesi (her aşamadan sonra ilgili olanlar)
 
 - [ ] Web: misafir açılış, takım ekleme, Google ile giriş, başka tarayıcıda aynı hesapla takımların görünmesi, çıkış, hesap silme.
