@@ -1270,8 +1270,8 @@ function cizProfil() {
     ${sil}`;
 }
 
-// Sürüm package.json'dan (web'de sitenin kökünde, Android'de www/ içinde)
-fetch('package.json').then((r) => r.json()).then((p) => {
+// Sürüm: web'de sitenin kökündeki package.json, Android'de kopyala.mjs'nin yazdığı www/surum.json
+fetch(window.Capacitor?.isNativePlatform?.() ? 'surum.json' : 'package.json').then((r) => r.json()).then((p) => {
   durum.surum = p.version || '';
   if (durum.sekme === 'profil') ciz();
 }).catch(() => {});
