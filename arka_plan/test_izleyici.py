@@ -175,24 +175,137 @@ class IzleyiciTesti(unittest.TestCase):
         mac_izle.degisiklikleri_bildir(b, eski, kk)
         self.assertIn(("gol", "⚽ GOL! Ev 2–1 Dep", "75' Savunmacı (k.k.) · Dep"), self.metinler)
 
-    def test_golcu_beklenmez_sonradan_guncellenir(self):
-        guncellenen = []
-        self.eski.setdefault((bildirim, "guncelle"), bildirim.guncelle)
-        bildirim.guncelle = lambda takimlar, tur, baslik, govde, mac_id, olay, kart: \
-            guncellenen.append((baslik, govde, mac_id, kart["oyuncu"]))
-        b = mac_izle.Bildirici([])
+    # ------------------------------------------------ golcü sonradan gelince güncelleme
+
+    def sahte_guncelle(self):
+        """bildirim.guncelle yerine: her deneme (baslik, govde, oyuncu, parça) kaydedilir;
+        self.guncelleme_bozuk(parça) True dönerse o parça gitmez."""
+        self.guncellemeler = []
+        self.guncelleme_bozuk = lambda parca: False
+
+        def guncelle(takimlar, tur, baslik, govde, mac_id, olay, kart, parcalar_=None):
+            giden = []
+            for parca in (parcalar_ if parcalar_ is not None else bildirim.GUNCELLEME_PARCALARI):
+                self.guncellemeler.append((baslik, govde, kart["oyuncu"], parca))
+                if not self.guncelleme_bozuk(parca):
+                    giden.append(parca)
+            return giden
+        self.yamala(bildirim, "guncelle", guncelle)
+
+    def adsiz_gol(self):
+        """70'te deplasman golü: ESPN skoru verir, golcüyü vermez (71'); golcü 73'te gelir."""
         eski = mac_durumu(BASLAMA + timedelta(minutes=70))
-        adsiz = {**eski, "dep_skor": 1, "dakika": "71'"}          # ESPN skoru verdi, golcüyü henüz vermedi
+        adsiz = {**eski, "dep_skor": 1, "dakika": "71'"}
+        adli = {**adsiz, "dakika": "73'", "goller": eski["goller"] + [
+            {"takim": "2", "dk": "70'", "oyuncu": "Forvet", "pen": False, "kk": False}]}
+        return eski, adsiz, adli
+
+    def test_golcu_beklenmez_sonradan_guncellenir(self):
+        self.sahte_guncelle()
+        b = mac_izle.Bildirici([])
+        eski, adsiz, adli = self.adsiz_gol()
         mac_izle.degisiklikleri_bildir(b, eski, adsiz)
         self.assertIn(("gol", "⚽ GOL! Ev 2–1 Dep", "71' · Dep"), self.metinler)
         mac_izle.degisiklikleri_bildir(b, adsiz, {**adsiz, "dakika": "72'"})
-        self.assertEqual(guncellenen, [], "golcü yokken güncelleme gitmemeli")
-        adli = {**adsiz, "dakika": "73'", "goller": eski["goller"] + [
-            {"takim": "2", "dk": "70'", "oyuncu": "Forvet", "pen": False, "kk": False}]}
+        self.assertEqual(self.guncellemeler, [], "golcü yokken güncelleme gitmemeli")
         mac_izle.degisiklikleri_bildir(b, adsiz, adli)
         mac_izle.degisiklikleri_bildir(b, adli, adli)
-        self.assertEqual(guncellenen, [("⚽ GOL! Ev 2–1 Dep", "70' Forvet · Dep", "m1", "Forvet")], "bir kez güncellenmeli")
+        self.assertEqual(self.guncellemeler, [("⚽ GOL! Ev 2–1 Dep", "70' Forvet · Dep", "Forvet", "sade"),
+                                              ("⚽ GOL! Ev 2–1 Dep", "70' Forvet · Dep", "Forvet", "kart")],
+                         "iki parça birer kez gitmeli")
         self.assertEqual([o for o, *_ in self.metinler].count("gol"), 1, "güncelleme yeni gol bildirimi değil")
+        self.assertNotIn("m1:adsiz:2-1:dep", b.gonderilenler, "güncelleme gidince işaret silinir")
+
+    def test_gidemeyen_guncelleme_isareti_kalir_ve_yeniden_denenir(self):
+        self.sahte_guncelle()
+        sayac = {"n": 0}
+
+        def bozuk(parca):
+            if parca == "kart":
+                sayac["n"] += 1
+                return sayac["n"] <= 2          # kart parçası ilk iki denemede gitmez
+            return False
+        self.guncelleme_bozuk = bozuk
+        b = mac_izle.Bildirici([])
+        eski, adsiz, adli = self.adsiz_gol()
+        mac_izle.degisiklikleri_bildir(b, eski, adsiz)
+        mac_izle.degisiklikleri_bildir(b, adsiz, adli)
+        self.assertIn("m1:adsiz:2-1:dep", b.gonderilenler, "gidemeyen güncellemenin işareti silinmemeli")
+        self.assertEqual(b.bekleyenler["m1:adsiz:2-1:dep"]["kalan"], ["kart"])
+        # sonraki turlar: sıradaki güncelleme yeniden üretilmez, yalnız eksik kart parçası denenir
+        mac_izle.degisiklikleri_bildir(b, adli, adli)
+        b.yeniden_dene()
+        self.assertIn("m1:adsiz:2-1:dep", b.bekleyenler)
+        b.yeniden_dene()
+        self.assertEqual([p for *_, p in self.guncellemeler], ["sade", "kart", "kart", "kart"])
+        self.assertEqual(b.bekleyenler, {})
+        self.assertNotIn("m1:adsiz:2-1:dep", b.gonderilenler)
+        mac_izle.degisiklikleri_bildir(b, adli, adli)
+        b.yeniden_dene()
+        self.assertEqual(len(self.guncellemeler), 4, "gittikten sonra bir daha gönderilmemeli")
+
+    def test_bekleyen_guncelleme_sonraki_izleyiciye_gecer_ve_vazgecilir(self):
+        import json
+        self.sahte_guncelle()
+        self.guncelleme_bozuk = lambda parca: True
+        b = mac_izle.Bildirici([])
+        eski, adsiz, adli = self.adsiz_gol()
+        mac_izle.degisiklikleri_bildir(b, eski, adsiz)
+        mac_izle.degisiklikleri_bildir(b, adsiz, adli)
+        # canli.json'a yazılıp okunmuş hâliyle yeni izleyiciye geçer
+        b2 = mac_izle.Bildirici(b.gonderilenler, json.loads(json.dumps(list(b.bekleyenler.values()))))
+        self.guncelleme_bozuk = lambda parca: parca == "sade"
+        b2.yeniden_dene()
+        self.assertEqual(b2.bekleyenler["m1:adsiz:2-1:dep"]["kalan"], ["sade"])
+        self.saat[0] += mac_izle.VAZGEC["gol"] + timedelta(seconds=1)
+        n = len(self.guncellemeler)
+        b2.yeniden_dene()
+        self.assertEqual(len(self.guncellemeler), n, "süre geçince denenmez")
+        self.assertEqual(b2.bekleyenler, {})
+        self.assertNotIn("m1:adsiz:2-1:dep", b2.gonderilenler, "vazgeçilen güncelleme yeniden üretilmez")
+        mac_izle.degisiklikleri_bildir(b2, adli, adli)
+        self.assertEqual(len(self.guncellemeler), n)
+
+    def test_skor_degisince_bekleyen_guncelleme_birakilir(self):
+        self.sahte_guncelle()
+        self.guncelleme_bozuk = lambda parca: True
+        b = mac_izle.Bildirici([])
+        eski, adsiz, adli = self.adsiz_gol()
+        mac_izle.degisiklikleri_bildir(b, eski, adsiz)
+        mac_izle.degisiklikleri_bildir(b, adsiz, adli)
+        self.assertIn("m1:adsiz:2-1:dep", b.bekleyenler)
+        yeni_gol = {**adli, "ev_skor": 3, "dakika": "75'", "goller": adli["goller"] + [
+            {"takim": "1", "dk": "75'", "oyuncu": "Golcü", "pen": False, "kk": False}]}
+        mac_izle.degisiklikleri_bildir(b, adli, yeni_gol)
+        self.assertNotIn("m1:adsiz:2-1:dep", b.bekleyenler, "eski golün güncellemesi yeni golün üstüne yazmamalı")
+        self.assertNotIn("m1:adsiz:2-1:dep", b.gonderilenler)
+        n = len(self.guncellemeler)
+        b.yeniden_dene()
+        self.assertEqual(len(self.guncellemeler), n)
+
+    def test_gol_siradayken_golcu_gelirse_once_gol_gider(self):
+        self.sahte_guncelle()
+        self.bozuk = lambda olay, parca: olay == "gol" and parca == "sade"
+        b = mac_izle.Bildirici([])
+        eski, adsiz, adli = self.adsiz_gol()
+        mac_izle.degisiklikleri_bildir(b, eski, adsiz)
+        self.assertIn("m1:skor:2-1", b.bekleyenler)
+        mac_izle.degisiklikleri_bildir(b, adsiz, adli)
+        self.assertEqual(self.guncellemeler, [], "gol bildirimi gitmeden güncelleme gönderilmemeli")
+        self.bozuk = lambda olay, parca: False
+        b.yeniden_dene()                              # gol (adsız) gider
+        mac_izle.degisiklikleri_bildir(b, adli, adli)  # sonra golcüyle güncellenir
+        self.assertEqual([p for *_, p in self.guncellemeler], ["sade", "kart"])
+        self.assertEqual(b.bekleyenler, {})
+
+    def test_fcm_guncelleme_giden_parcalari_doner(self):
+        kart = {"ev_skor": 2, "dep_skor": 1, "oyuncu": "Forvet"}
+        cagrilar, _ = self.sahte_fcm([self.fcm_hatasi("INVALID_ARGUMENT")])
+        self.assertEqual(bildirim.guncelle(("1", "2"), "gol", "GOL", "x", "m1", "gol", kart), ["kart"],
+                         "sade kalıcı hatayla düştü, kart gitti")
+        self.assertEqual(bildirim.guncelle(("1", "2"), "gol", "GOL", "x", "m1", "gol", kart, parcalar_=["sade"]),
+                         ["sade"], "yalnız eksik parça gönderilebilir")
+        self.assertEqual([c["data"]["guncelle"] for c in cagrilar], ["sade", "kart", "sade"])
 
     def test_skor_karti_verisi(self):
         self.calistir(timedelta(hours=5, minutes=30))

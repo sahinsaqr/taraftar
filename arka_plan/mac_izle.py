@@ -172,11 +172,28 @@ class Bildirici:
         self._gonder(is_)
         return True
 
+    def guncelle(self, anahtar, m, tur, olay, baslik, mesaj, ayrinti):
+        """Gönderilmiş bildirimi sessizce günceller (golcü adı sonradan geldi). `anahtar` "güncellenecek"
+        işaretidir (gonderilenler'de durur): ancak güncellemenin tüm parçaları gidince silinir; gidemeyen
+        parça bekleyenlere girip bir_kez'deki gibi yeniden denenir. Sıradaysa False."""
+        if anahtar not in self.gonderilenler or anahtar in self.bekleyenler:
+            return False
+        is_ = {"anahtar": anahtar, "takimlar": [m["ev"]["id"], m["dep"]["id"]], "mac": m["id"], "tur": tur,
+               "olay": olay, "baslik": baslik, "govde": mesaj, "kart": kart_bilgisi(m, ayrinti),
+               "ilk": iso(simdi()), "deneme": 0, "guncelle": True}
+        self._gonder(is_)
+        return True
+
     def _gonder(self, is_, parcalar=None):
         """parcalar None: ilk gönderim (olayın tüm parçaları); yoksa yalnız eksik kalanlar."""
-        giden = bildirim.gonder(is_["takimlar"], is_["tur"], is_["baslik"], is_["govde"], is_["mac"],
-                                is_["olay"], kart=is_["kart"], parcalar_=parcalar)
-        istenen = parcalar if parcalar is not None else bildirim.parcalar(is_["tur"], is_["kart"])
+        if is_.get("guncelle"):
+            giden = bildirim.guncelle(is_["takimlar"], is_["tur"], is_["baslik"], is_["govde"], is_["mac"],
+                                      is_["olay"], is_["kart"], parcalar_=parcalar)
+            istenen = parcalar if parcalar is not None else bildirim.GUNCELLEME_PARCALARI
+        else:
+            giden = bildirim.gonder(is_["takimlar"], is_["tur"], is_["baslik"], is_["govde"], is_["mac"],
+                                    is_["olay"], kart=is_["kart"], parcalar_=parcalar)
+            istenen = parcalar if parcalar is not None else bildirim.parcalar(is_["tur"], is_["kart"])
         kalan = [p for p in istenen if p not in (giden or [])]
         is_["deneme"] += 1
         self.degisti = True
@@ -185,20 +202,34 @@ class Bildirici:
             self.bekleyenler[is_["anahtar"]] = is_
             print(f"  bildirim sırada: {is_['anahtar']} ({', '.join(kalan)} gitmedi, {is_['deneme']}. tur)")
         else:
-            self.bekleyenler.pop(is_["anahtar"], None)
-            self.gonderilenler.add(is_["anahtar"])
+            self._bitir(is_["anahtar"], is_)
             if is_["deneme"] > 1:
                 print(f"  bildirim {is_['deneme']}. turda gitti: {is_['anahtar']}")
+
+    def _bitir(self, anahtar, is_):
+        """İş bitti (gitti ya da vazgeçildi): olay anahtarı işaretlenir, güncelleme işareti silinir."""
+        self.bekleyenler.pop(anahtar, None)
+        if is_.get("guncelle"):
+            self.gonderilenler.discard(anahtar)
+        else:
+            self.gonderilenler.add(anahtar)   # vazgeçilse de: tekrar tekrar üretilmesin
 
     def yeniden_dene(self):
         for anahtar, is_ in list(self.bekleyenler.items()):
             if simdi() - zaman_oku(is_["ilk"]) > VAZGEC.get(is_["tur"], VAZGEC_DIGER):
                 print(f"  bildirimden vazgeçildi (çok gecikti): {anahtar} ({', '.join(is_['kalan'])})")
-                self.bekleyenler.pop(anahtar)
-                self.gonderilenler.add(anahtar)   # tekrar tekrar üretilmesin
+                self._bitir(anahtar, is_)
                 self.degisti = True
                 continue
             self._gonder(is_, is_["kalan"])
+
+    def guncellemeleri_birak(self, mid):
+        """Skor değişti: maçın eski golüne ait güncellemeler artık geçersiz (yeni golün üstüne yazmasın)."""
+        for anahtar in [k for k in self.gonderilenler | set(self.bekleyenler) if k.startswith(f"{mid}:adsiz:")]:
+            self.gonderilenler.discard(anahtar)
+            if self.bekleyenler.pop(anahtar, None):
+                print(f"  güncelleme bırakıldı (skor değişti): {anahtar}")
+                self.degisti = True
 
     def unut(self, anahtar):
         """Anahtar yeniden bildirilebilsin (ör. VAR iptali); sıradaysa gönderilmez."""
@@ -234,6 +265,7 @@ def degisiklikleri_bildir(b, eski, yeni):
     eski_dep = (eski or {}).get("dep_skor") or 0
     ev, dep = yeni["ev_skor"] or 0, yeni["dep_skor"] or 0
     if (ev, dep) != (eski_ev, eski_dep):
+        b.guncellemeleri_birak(mid)
         if ev >= eski_ev and dep >= eski_dep:
             atan = yeni["ev"] if ev > eski_ev else yeni["dep"]
             atan_skor = ev if atan is yeni["ev"] else dep
@@ -263,16 +295,16 @@ def degisiklikleri_bildir(b, eski, yeni):
 
 def golcuyu_ekle(b, m):
     """Son gol bildirimi golcü adı olmadan gittiyse ve ESPN adı artık veriyorsa aynı bildirimi
-    (aynı etiket) golcüyle sessizce günceller. Skor bu arada değiştiyse eski gol güncellenmez."""
+    (aynı etiket) golcüyle sessizce günceller. Skor bu arada değiştiyse eski gol güncellenmez
+    (degisiklikleri_bildir işareti bırakır). Güncelleme gidemezse Bildirici yeniden dener; gol
+    bildiriminin kendisi hâlâ sıradaysa önce o gitsin diye beklenir."""
     ev, dep = m["ev_skor"] or 0, m["dep_skor"] or 0
     for taraf, atan_skor in (("ev", ev), ("dep", dep)):
         anahtar = f"{m['id']}:adsiz:{ev}-{dep}:{taraf}"
-        if anahtar not in b.gonderilenler or not son_gol(m, m[taraf], atan_skor):
+        if f"{m['id']}:skor:{ev}-{dep}" in b.bekleyenler or not son_gol(m, m[taraf], atan_skor):
             continue
-        b.gonderilenler.discard(anahtar)
-        bildirim.guncelle((m["ev"]["id"], m["dep"]["id"]), "gol", f"⚽ GOL! {skor_metni(m)}",
-                          gol_ayrintisi(m, m[taraf], atan_skor), m["id"], "gol",
-                          kart_bilgisi(m, kart_ayrintisi(m, m[taraf], atan_skor)))
+        b.guncelle(anahtar, m, "gol", "gol", f"⚽ GOL! {skor_metni(m)}", gol_ayrintisi(m, m[taraf], atan_skor),
+                   kart_ayrintisi(m, m[taraf], atan_skor))
 
 
 # ------------------------------------------------------------- izleme

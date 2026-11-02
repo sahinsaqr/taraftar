@@ -149,18 +149,28 @@ def kart_gonder(takim_idleri, tur, baslik, govde, mac_id, olay, kart):
     return _veri_gonder(k, kart_verisi(tur, baslik, govde, mac_id, olay, kart))
 
 
-def guncelle(takim_idleri, tur, baslik, govde, mac_id, olay, kart):
+GUNCELLEME_PARCALARI = ["sade", "kart"]
+
+
+def guncelle(takim_idleri, tur, baslik, govde, mac_id, olay, kart, parcalar_=None):
     """Gönderilmiş bildirimi (aynı etiket = maç id) sessizce günceller, ör. golcü adı sonradan gelince.
 
     İki görünüme de yalnız veri mesajı gider ("guncelle": sade | kart); uygulama bildirim hâlâ
-    duruyorsa yeniden çizer, ses/titreşim olmaz (BildirimServisi.java). 1.0.1 ve öncesi yok sayar."""
-    print(f"[FCM {tur} güncelle] {baslik} | {govde}")
-    sade = {"guncelle": "sade", "mac": str(mac_id), "tur": tur, "olay": olay, "kanal": KANAL[tur],
-            "baslik": baslik, "govde": govde, "gonderim": _zaman()}
-    kartli = {**kart_verisi(tur, baslik, govde, mac_id, olay, kart), "kart": "", "guncelle": "kart"}
-    a = _veri_gonder(kosul(takim_idleri, tur), sade)
-    b = _veri_gonder(kosul(takim_idleri, f"{tur}k"), kartli)
-    return a and b
+    duruyorsa yeniden çizer, ses/titreşim olmaz (BildirimServisi.java). 1.0.1 ve öncesi yok sayar.
+    `parcalar_` verilirse yalnız o parçalar gönderilir. gonder() gibi başarıyla giden parçaları döner."""
+    istenen = parcalar_ if parcalar_ is not None else GUNCELLEME_PARCALARI
+    print(f"[FCM {tur} güncelle] {baslik} | {govde}  ({', '.join(istenen)})")
+    giden = []
+    if "sade" in istenen:
+        sade = {"guncelle": "sade", "mac": str(mac_id), "tur": tur, "olay": olay, "kanal": KANAL[tur],
+                "baslik": baslik, "govde": govde, "gonderim": _zaman()}
+        if _veri_gonder(kosul(takim_idleri, tur), sade):
+            giden.append("sade")
+    if "kart" in istenen:
+        kartli = {**kart_verisi(tur, baslik, govde, mac_id, olay, kart), "kart": "", "guncelle": "kart"}
+        if _veri_gonder(kosul(takim_idleri, f"{tur}k"), kartli):
+            giden.append("kart")
+    return giden
 
 
 def _veri_gonder(k, veri):
