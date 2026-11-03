@@ -515,6 +515,8 @@ def izle():
         detay.eksikleri_yaz(list(tum_maclar().values()))
     if izlenen_var or b.degisti:
         git_gonder("Maç sonrası veriler güncellendi")
+    if kilit_bende:   # son durum gönderildi; kilit (hâlâ bendeyse) boşaltılır, sıradaki izleyici beklemeden alır
+        kilit.birak()
 
 
 def canli_yaz(son_durum, b):

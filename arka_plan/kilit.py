@@ -23,6 +23,8 @@ bildirimden kötü); izleyici izlemeden kapanır, sıradaki tetikleme yeniden de
 Devirde (devir.py) eski sahip "devredildi" işaretiyle aynı commit'te sahipliği yeni çalışmaya yazar
 (o da karşılaştır-ve-değiştir: yalnız kilit hâlâ eski sahipteyse); yeni sahibin "alindi"si devir anıdır.
 Sahip olan izleyici her turda uzaktaki kilide bakar; başkası sahip olmuşsa gönderimi bırakıp kapanır.
+Normal kapanışta (son durum gönderildikten sonra) kilit, yalnız hâlâ kendisindeyse boşaltılır (birak);
+sıradaki izleyici API'ye sormadan alır. 6 saat kuralı yalnız çöken, kilidi bırakamayan izleyiciler için kalır.
 
 Yerelde (GitHub Actions dışında) kilit yoktur: her zaman sahip sayılır, git'e dokunulmaz.
 """
@@ -186,6 +188,30 @@ def bende_mi(ben=None, kok=None):
     if uc is None:
         return True
     return str(kilit.get("sahip") or "") == ben
+
+
+def birak(ben=None, kok=None):
+    """İzleyici kapanırken: kilit hâlâ bendeyse sahibi boşaltır (karşılaştır-ve-değiştir; bu arada başkası
+    sahip olduysa ona dokunulmaz). Böylece sıradaki izleyici API'ye sormadan alır; 6 saat kuralı yalnız
+    çöken (bırakamayan) izleyiciler için kalır. Bırakıldıysa True."""
+    if not ortak.actions_icinde():
+        return True
+    ben = ben or calisma_id()
+    kok = kok or ortak.KOK
+    for _ in range(PUSH_DENEME):
+        uc, kilit = _uc_ve_kilit(kok)
+        if uc is None:
+            print("Kilit: bırakılamadı (uzak depo okunamadı); sıradaki izleyici sahibin bittiğini API'den görür.")
+            return False
+        if str(kilit.get("sahip") or "") != ben:
+            return False   # bende değil (devredildi ya da başkası aldı): dokunma
+        bos = {"sahip": "", "birakildi": iso(), "onceki": ben}
+        if _cas_gonder(kok, uc, {DOSYA: _metin(bos)}, f"İzleyici kilidi bırakıldı ({ben})"):
+            _yereli_esitle(kok)
+            print(f"Kilit: bırakıldı ({ben}).")
+            return True
+    print("Kilit: bırakılamadı (push sürekli reddedildi).")
+    return False
 
 
 def devret(yeni, dosyalar, mesaj, ben=None, kok=None):

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import devir  # noqa: E402
 import kilit  # noqa: E402
 import ortak  # noqa: E402
-from ortak import iso, simdi  # noqa: E402
+from ortak import iso, json_yaz, simdi  # noqa: E402
 
 
 def git(kok, *args):
@@ -152,6 +152,43 @@ class GitKilitTesti(Yama):
         self.assertEqual(self.uzaktaki(kilit.DOSYA)["onceki"], "A")
         self.assertFalse(kilit.bende_mi("A", self.a), "eski sahip bir sonraki turda kaybettiğini görür")
 
+    def test_kapanan_sahip_kilidi_birakir_siradaki_api_sormadan_alir(self):
+        self.surenler = {"A", "B"}
+        self.assertTrue(kilit.al("A", self.a))
+        self.assertTrue(kilit.birak("A", self.a))
+        k = self.uzaktaki(kilit.DOSYA)
+        self.assertEqual((k["sahip"], k["onceki"]), ("", "A"))
+        self.yamala(kilit, "sahip_durumu", lambda sahip: self.fail("boş kilit için API sorulmamalı"))
+        self.assertTrue(kilit.al("B", self.b), "A hâlâ çalışıyor görünse de boş kilit alınır")
+        self.assertFalse(kilit.birak("A", self.a), "artık bende değil: dokunma")
+        self.assertEqual(self.uzaktaki(kilit.DOSYA)["sahip"], "B")
+
+    def test_birak_devredilen_ya_da_alinan_kilide_dokunmaz(self):
+        self.surenler = {"A", "C"}
+        self.assertTrue(kilit.al("A", self.a))
+        self.assertTrue(kilit.devret("C", {}, "Devir", "A", self.a))
+        uc_once = git(self.uzak, "rev-parse", "main")
+        self.assertFalse(kilit.birak("A", self.a))
+        self.assertEqual(git(self.uzak, "rev-parse", "main"), uc_once, "commit atılmamalı")
+        self.assertEqual(self.uzaktaki(kilit.DOSYA)["sahip"], "C")
+
+    def test_birak_yarisi_yeni_sahibi_ezmez(self):
+        """A bırakırken (kilidi kendinde okuduktan sonra, push'tan önce) kilit başkasına geçer:
+        A'nın push'u reddedilir, kilit yeniden okunur ve A dokunmadan çıkar."""
+        self.assertTrue(kilit.al("A", self.a))
+        gercek = kilit._cas_gonder
+        araya = {"girdi": False}
+
+        def cas(kok, uc, dosyalar, mesaj):
+            if kok == self.a and not araya["girdi"]:
+                araya["girdi"] = True   # A çöktü sanıldı, B kilidi aldı
+                self.assertTrue(gercek(self.b, kilit._uc_ve_kilit(self.b)[0],
+                                       {kilit.DOSYA: '{"sahip":"B","alindi":"x"}'}, "B"))
+            return gercek(kok, uc, dosyalar, mesaj)
+        self.yamala(kilit, "_cas_gonder", cas)
+        self.assertFalse(kilit.birak("A", self.a))
+        self.assertEqual(self.uzaktaki(kilit.DOSYA)["sahip"], "B")
+
     def test_devir_sahipligi_yeniye_gecirir_sahip_olmayan_devredemez(self):
         self.surenler = {"A", "B", "C"}
         self.assertTrue(kilit.al("A", self.a))
@@ -227,13 +264,21 @@ class IzleyiciKilitTesti(unittest.TestCase):
         self.addCleanup(self.t.tearDown)
         self.mac_izle = test_izleyici.mac_izle
 
+    def birakma_kaydi(self):
+        self.birakmalar = []
+        self.t.yamala(self.mac_izle.kilit, "birak",
+                      lambda: self.birakmalar.append((self.t.saat[0], len(self.t.commitler))) or True)
+
     def test_kilit_baskasindaysa_hic_gondermez(self):
+        self.birakma_kaydi()
         self.t.yamala(self.mac_izle.kilit, "al", lambda: False)
         self.t.calistir(timedelta(hours=5, minutes=30))
         self.assertEqual(self.t.gonderilen, [])
         self.assertEqual(self.t.commitler, [], "kaybeden izleyici durum da yazmaz")
+        self.assertEqual(self.birakmalar, [], "sahip olmadığı kilidi bırakmaz")
 
     def test_kilidi_kaybedince_gondermeyi_birakir(self):
+        self.birakma_kaydi()
         bas = self.t.saat[0]
         self.t.yamala(self.mac_izle.kilit, "al", lambda: True)
         # maç 30. dakikadayken kilit başka izleyiciye geçer
@@ -241,6 +286,31 @@ class IzleyiciKilitTesti(unittest.TestCase):
         self.t.calistir(timedelta(hours=5, minutes=30))
         self.assertEqual([o for o, *_ in self.t.gonderilen], ["hatirlat", "basladi", "gol"])
         self.assertLess(self.t.saat[0], bas + timedelta(minutes=52))
+        self.assertEqual(self.birakmalar, [], "kaybedilen kilit bırakılmaz")
+
+    def test_mac_bitince_son_durumdan_sonra_kilit_birakilir(self):
+        self.birakma_kaydi()
+        self.t.calistir(timedelta(hours=5, minutes=30))
+        self.assertEqual(len(self.birakmalar), 1, "kapanırken bir kez bırakılır")
+        _, commit_sayisi = self.birakmalar[0]
+        self.assertEqual(self.t.commitler[commit_sayisi - 1][1], "Maç sonrası veriler güncellendi",
+                         "kilit son durum gönderildikten sonra bırakılır")
+
+    def test_mac_yoksa_kilit_alinmaz_birakilmaz(self):
+        self.birakma_kaydi()
+        alinan = []
+        self.t.yamala(self.mac_izle.kilit, "al", lambda: alinan.append(1) or True)
+        json_yaz(self.t.klasor / "lig_x.json", {"maclar": []})
+        self.t.yamala(self.mac_izle.espn, "gun_maclari", lambda lig, gun: [])
+        self.t.calistir(timedelta(hours=5, minutes=30))
+        self.assertEqual((alinan, self.birakmalar), ([], []), "boşta izleyici kilit commit'i üretmez")
+
+    def test_devreden_kilidi_birakmaz(self):
+        self.birakma_kaydi()
+        self.t.devir_yamala(hazir_dk=2)
+        self.t.calistir(timedelta(minutes=40))
+        self.assertEqual(self.birakmalar, [], "kilit yeni sahibe devredildi, bırakılmaz")
+
 
 
 if __name__ == "__main__":
