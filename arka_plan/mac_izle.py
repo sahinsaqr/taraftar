@@ -13,6 +13,11 @@ Bildirim önce gönderilir, "gönderildi" işareti ancak başarılı olunca konu
 (sade metin ya da skor kartı parçası) bekleyenler kuyruğunda her turda yeniden denenir; maç izlemeden
 çıkmış olsa da (ör. bitiş). Kuyruk canli.json'da saklanır, sonraki izleyici devam eder.
 
+Aynı anda yalnız bir izleyici bildirim gönderir (kilit.py, veri/izleyici.json): izlenecek maç ya da
+bekleyen bildirim çıkınca izleyici kilidi alır; başka canlı izleyici sahipse göndermeden kapanır. Sahip
+olan izleyici her turda kilidin hâlâ kendisinde olduğuna bakar. futbol.yml'deki "kontrol" yanılsa da
+(2026-11-03'teki gibi) iki izleyici aynı olayı iki kez göndermez.
+
 5,5 saat sınırından 15 dk önce izlenecek maç varsa izleyici kendi yerine yeni bir çalışma başlatır ve
 yenisi hazır olunca durumu devredip kapanır (devir.py). Devir olmazsa sınır dolunca görev biter;
 durum canli.json'da saklandığı için sıradaki görev kaldığı yerden devam eder, aynı olayı tekrar
@@ -39,6 +44,7 @@ import bildirim
 import detay
 import devir
 import espn
+import kilit
 import veri_guncelle
 from ortak import (VERI, ayarlar, git_gonder, iso, json_oku, json_yaz, simdi,
                    takip_edilenler, zaman_oku)
@@ -395,15 +401,36 @@ def izle():
             sn = min(sn, KONTROL_CANLI)
         time.sleep(sn)
 
+    kilit_bende = False
+
     while simdi() - baslangic < azami:
         su_an = simdi()
-        b.yeniden_dene()
         maclar = tum_maclar()
         # izleme sırasında öğrendiğimiz en güncel durumu kullan
         for mid, m in son_durum.items():
             if mid in maclar:
                 maclar[mid] = m
         adaylar = [m for m in maclar.values() if izlenecek_mi(m, su_an)]
+
+        # gönderecek bir şey varsa kilit gerekir; başka izleyici sahipse bu izleyici hiçbir şey göndermeden kapanır
+        if adaylar or b.bekleyenler or test_dk:
+            if not kilit_bende:
+                if not kilit.al():
+                    print("Kilit başka bir izleyicide: bu izleyici bildirim göndermeden kapanıyor.")
+                    return
+                kilit_bende = True
+                # önceki sahibin son durumu (kilit alınırken çekildi): onun gönderdiklerini tekrar gönderme
+                canli = json_oku(VERI / "canli.json", {}) or {}
+                b = Bildirici(canli.get("bildirilenler", []), canli.get("bekleyenler", []))
+                son_durum = {m["id"]: m for m in canli.get("maclar", [])}
+                for mid, m in son_durum.items():
+                    if mid in maclar:
+                        maclar[mid] = m
+                adaylar = [m for m in maclar.values() if izlenecek_mi(m, su_an)]
+            elif not kilit.bende_mi():
+                print("Kilit artık başka bir izleyicide: bu izleyici bildirim göndermeden kapanıyor.")
+                return
+        b.yeniden_dene()
 
         # süre sınırına yaklaşıldı ve izlenecek maç var: yeni izleyiciyi başlat, hazır olunca devret
         if su_an >= devir_ani and (adaylar or test_dk) and devirci.adim(su_an):

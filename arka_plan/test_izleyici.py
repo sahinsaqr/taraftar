@@ -421,7 +421,9 @@ class IzleyiciTesti(unittest.TestCase):
         self.yamala(devir, "iste", iste)
         self.yamala(devir, "uzak_json", uzak_json)
         self.yamala(devir, "calisma_id", lambda: "100")
-        self.yamala(devir, "git_gonder", lambda mesaj: (durum["itiler"].append((self.saat[0], mesaj)), True)[1])
+        # devir commit'i (durum + devredildi + kilidin yeni sahibi) kilit.devret ile gider
+        self.yamala(devir, "kilit_devret",
+                    lambda yeni, dosyalar, mesaj: (durum["itiler"].append((self.saat[0], mesaj)), True)[1])
         return durum
 
     def test_devir_el_sikisarak_olur_ve_kaldigi_yerden_surer(self):

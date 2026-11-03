@@ -7,11 +7,13 @@ Akış (el sıkışma veri/devir.json üzerinden, ikisi de git ile okunur/yazıl
   2. Yeni çalışma kurulup ilk veri güncellemesini yapınca devir.json'a {"onceki", "yeni", "hazir"} yazar
      ve push eder, sonra beklemeye geçer (henüz bildirim göndermez).
   3. Eski izleyici her turda devir.json'un uzaktaki haline bakar; "hazir" görünce son durumu
-     (canli.json: bildirilenler + bekleyenler) devir.json'daki "devredildi" işaretiyle aynı commit'te
-     push eder ve kapanır.
+     (canli.json: bildirilenler + bekleyenler), devir.json'daki "devredildi" işaretini ve izleyici
+     kilidinin yeni sahibini (kilit.py) tek commit'te push eder ve kapanır. Bu commit yalnız kilit hâlâ
+     eski izleyicideyse kabul edilir (karşılaştır-ve-değiştir).
   4. Yeni izleyici "devredildi"yi görünce git pull ile o canli.json'u alır ve izlemeye başlar.
-     Önceki çalışma devretmeden biterse (ör. çöktüyse) ya da 3 dk içinde işaret gelmezse
-     mevcut canli.json ile başlar.
+     Önceki çalışma devretmeden biterse (ör. çöktüyse) mevcut canli.json ile başlar. Önceki hâlâ
+     çalışıyorsa en fazla BEKLEME_SINIRI (önceki zaten DEVIR_PAYI içinde kapanır) bekler; sonra
+     kilidi almayı dener (önceki hâlâ sahipse alamaz ve izlemeden kapanır: aynı anda iki izleyici olmaz).
 
 Ortam değişkenleri (futbol.yml verir):
   GH_TOKEN          : workflow_dispatch ve çalışma durumu için (github.token, actions: write)
@@ -28,13 +30,16 @@ import urllib.error
 import urllib.request
 from datetime import timedelta
 
+import kilit
 from ortak import VERI, git_cek, git_gonder, iso, json_yaz, uzak_json
 
 DOSYA = "veri/devir.json"
 DEVIR_PAYI = timedelta(minutes=15)       # süre sınırından bu kadar önce devir başlar
 ISTEK_ARALIGI = timedelta(minutes=1)     # tetikleme başarısızsa yeniden deneme aralığı
 BAKIS_ARALIGI = timedelta(seconds=10)    # eski izleyici devir.json'a en sık bu aralıkla bakar
-BEKLEME_SINIRI = 180                     # yeni izleyici "devredildi"yi en fazla bu kadar sn bekler
+# yeni izleyici "devredildi"yi (önceki çalışma sürerken) en fazla bu kadar sn bekler; önceki zaten
+# devri istedikten en geç DEVIR_PAYI sonra kapanır
+BEKLEME_SINIRI = int((DEVIR_PAYI + timedelta(minutes=5)).total_seconds())
 IS_AKISI = "futbol.yml"
 
 
@@ -128,14 +133,20 @@ class Devirci:
         return False
 
     def devret(self):
-        """canli.json yazılmış olmalı. Devredildi işaretini aynı commit'te push eder; başarılıysa True."""
+        """canli.json yazılmış olmalı. Devredildi işaretini ve kilidin yeni sahibini aynı commit'te push eder
+        (yalnız kilit hâlâ bendeyse); başarılıysa True."""
         oz = ozet()
         json_yaz(VERI / "devir.json", {"onceki": calisma_id(), "yeni": self.yeni, "devredildi": iso(), "ozet": oz})
-        if not git_gonder("Devir: izleme yeni çalışmaya devredildi"):
+        dosyalar = {f"veri/{ad}": (VERI / ad).read_text(encoding="utf-8") for ad in ("canli.json", "devir.json")}
+        if not kilit_devret(self.yeni, dosyalar, "Devir: izleme yeni çalışmaya devredildi"):
             print("Devir: durum gönderilemedi; izlemeye devam, sonraki turda yeniden denenecek.")
             return False
         print(f"Devir: durum devredildi → {oz}. Bu izleyici kapanıyor.")
         return True
+
+
+def kilit_devret(yeni, dosyalar, mesaj):
+    return kilit.devret(yeni, dosyalar, mesaj)
 
 
 def devri_al(onceki):
@@ -165,5 +176,5 @@ def devri_al(onceki):
                 return False
         time.sleep(3)
     git_cek()
-    print(f"Devir: {BEKLEME_SINIRI} sn içinde devredilmedi; mevcut durumla başlanıyor → {ozet()}")
+    print(f"Devir: {BEKLEME_SINIRI} sn içinde devredilmedi; kilit denenecek, mevcut durum → {ozet()}")
     return False

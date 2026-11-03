@@ -26,7 +26,8 @@ permissions:
 # Elle seçilen tam/hizli güncellemesi atlanmaz; izleyici çalışıyorsa yalnız veriyi günceller, izlemeye karışmaz.
 # Devir (arka_plan/devir.py): izleyici 5,5 saat sınırına 15 dk kala, izlenecek maç varsa mod=devir ile yenisini
 # başlatır; yenisi hazır olunca durumu devredip kapanır. Bu yüzden "calis" işinde concurrency yok: kısa süre iki
-# çalışma üst üste biner ama bildirim yalnız biri gönderir. Aynı anda tek izleyiciyi "kontrol" ve devir sağlar.
+# çalışma üst üste biner ama bildirim yalnız biri gönderir. Aynı anda tek gönderen izleyiciyi izleyici kilidi
+# (veri/izleyici.json, arka_plan/kilit.py) sağlar; "kontrol" yalnız gereksiz çalışmayı önler.
 
 jobs:
   kontrol:
@@ -50,11 +51,21 @@ jobs:
             { echo "calistir=1"; echo "izle=1"; } >> "$GITHUB_OUTPUT"; exit 0
           fi
           # Yalnız bundan önce başlamış çalışmalara bak: aynı anda gelen iki tetiklemeden eskisi kazanır.
-          n=0
-          for durum in in_progress queued; do
-            k=$(gh api "repos/$DEPO/actions/workflows/futbol.yml/runs?status=$durum&per_page=100" --jq "[.workflow_runs[] | select(.id < $BU_CALISMA)] | length")
-            n=$((n + k))
+          # ?status= filtresi çalışan izleyiciyi her zaman döndürmüyor (2026-11-03: 12:30'da başlayan
+          # izleyici 13:00'te görünmedi, iki izleyici çalıştı). Son çalışmalar filtresiz alınır, durum jq ile süzülür.
+          # Asıl güvence izleyici kilididir (arka_plan/kilit.py); bu kontrol yalnız boşuna çalışmayı önler.
+          n=""
+          for deneme in 1 2 3; do
+            if n=$(gh api "repos/$DEPO/actions/workflows/futbol.yml/runs?per_page=50" \
+                 --jq "[.workflow_runs[] | select(.id < $BU_CALISMA and .status != \"completed\")] | length"); then
+              break
+            fi
+            n=""; sleep 10
           done
+          if [ -z "$n" ]; then
+            echo "Çalışma listesi alınamadı; izleyici başlatılır, tekrarı kilit engeller."
+            n=0
+          fi
           echo "Önceki, bitmemiş çalışma: $n"
           if [ "$OLAY" = "workflow_dispatch" ] && [ "$MOD" != "otomatik" ]; then
             # elle tam/hizli: her zaman çalışır; izleyici varsa yalnız veriyi günceller
