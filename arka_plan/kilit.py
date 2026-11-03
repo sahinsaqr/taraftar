@@ -214,6 +214,15 @@ def birak(ben=None, kok=None):
     return False
 
 
+def elimde(ben=None, kok=None):
+    """Kilit kesin olarak bende mi (ör. devirle geldi)? bende_mi'nin tersine, okunamazsa ya da GitHub Actions
+    dışındaysa False: izleyici başlarken yalnız buna dayanarak kendini sahip saymaz, gerekince al() çağırır."""
+    if not ortak.actions_icinde():
+        return False
+    uc, kilit = _uc_ve_kilit(kok or ortak.KOK)
+    return uc is not None and str(kilit.get("sahip") or "") == (ben or calisma_id())
+
+
 def devret(yeni, dosyalar, mesaj, ben=None, kok=None):
     """Devir: sahipliği `yeni`ye yazar; `dosyalar` ({depo yolu: metin}, ör. canli.json + devir.json) aynı
     commit'e girer. Yalnız kilit hâlâ bendeyse (ya da yoksa). Gönderildiyse True."""

@@ -401,7 +401,8 @@ def izle():
             sn = min(sn, KONTROL_CANLI)
         time.sleep(sn)
 
-    kilit_bende = False
+    # devirle gelen kilit: işi olmasa da kapanırken bırakması için baştan sahip sayılır
+    kilit_bende = kilit.elimde()
 
     while simdi() - baslangic < azami:
         su_an = simdi()

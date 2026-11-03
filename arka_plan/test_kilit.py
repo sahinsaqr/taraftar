@@ -201,6 +201,8 @@ class GitKilitTesti(Yama):
         self.assertEqual(self.uzaktaki("veri/canli.json"), {"bildirilenler": ["son"]}, "durum aynı commit'te")
         self.assertEqual(self.uzaktaki("veri/devir.json"), {"yeni": "C"})
         self.assertFalse(kilit.bende_mi("A", self.a))
+        self.assertTrue(kilit.elimde("C", self.b), "devirle gelen kilit yeni sahibin elinde")
+        self.assertFalse(kilit.elimde("A", self.a))
         self.assertTrue(kilit.al("C", self.b), "yeni sahip kilidi zaten elinde bulur")
         self.assertFalse(kilit.devret("D", {}, "Devir", "A", self.a), "devreden ikinci kez devredemez")
 
@@ -251,6 +253,7 @@ class ApiTesti(Yama):
         os.environ.pop("GITHUB_ACTIONS")
         self.assertTrue(kilit.al("1"))
         self.assertTrue(kilit.bende_mi("1"))
+        self.assertFalse(kilit.elimde("1"), "yerelde kendini baştan sahip saymaz")
         self.assertEqual(self.istekler, [])
 
 
@@ -304,6 +307,18 @@ class IzleyiciKilitTesti(unittest.TestCase):
         self.t.yamala(self.mac_izle.espn, "gun_maclari", lambda lig, gun: [])
         self.t.calistir(timedelta(hours=5, minutes=30))
         self.assertEqual((alinan, self.birakmalar), ([], []), "boşta izleyici kilit commit'i üretmez")
+
+    def test_devirle_gelen_kilit_is_olmasa_da_birakilir(self):
+        """Yeni izleyici kilidi devirle alır, izleyecek maç yoktur: al() hiç çağrılmaz ama kapanırken bırakır."""
+        self.birakma_kaydi()
+        alinan = []
+        self.t.yamala(self.mac_izle.kilit, "elimde", lambda: True)
+        self.t.yamala(self.mac_izle.kilit, "al", lambda: alinan.append(1) or True)
+        json_yaz(self.t.klasor / "lig_x.json", {"maclar": []})
+        self.t.yamala(self.mac_izle.espn, "gun_maclari", lambda lig, gun: [])
+        self.t.calistir(timedelta(hours=5, minutes=30))
+        self.assertEqual(alinan, [])
+        self.assertEqual(len(self.birakmalar), 1)
 
     def test_devreden_kilidi_birakmaz(self):
         self.birakma_kaydi()
